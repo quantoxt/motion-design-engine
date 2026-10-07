@@ -261,7 +261,8 @@ function changed() {
   saveDraft();
   let lit = 0;
   for (const s of model.sections) {
-    const on = linesOf(s).some(touched);
+    const lines = linesOf(s);
+    const on = lines.length ? lines.some(touched) : true;   // a section with nothing to fill in (10. Gates) is always complete
     lit += on;
     const a = document.querySelector(`[data-section="${s.n}"]`);
     if (a) a.dataset.lit = String(on);
