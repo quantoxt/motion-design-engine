@@ -1,5 +1,8 @@
 # Terminal spec — interactive agent sessions in the studio UI
 
+Status: **built** (2026-10-07). Code: `studio/terminal.mjs` (sessions), `studio.mjs` (endpoints + websocket),
+`studio/app.mjs` (`agentPane`, `viewRun`, `viewAgents`). Changelog has the details.
+
 ## Goal
 From a film view, start a real terminal session running a coding agent pointed at
 that film's brief — and interact with it entirely from the web UI. Agent output
@@ -14,12 +17,16 @@ a local terminal. Everything runs on localhost.
   node-pty 1.1.0 (native build: npm blocks install scripts by default, so approve
   it once: `npm install-scripts approve node-pty && npm rebuild node-pty`),
   @xterm/xterm 6.0.0, ws 8.22.0.
-- Transport: websocket between `studio.mjs` and the film view. (Polling fallback
-  acceptable for v1 if websockets complicate the server, but streaming is the goal.)
+- Transport: websocket (`ws`) between `studio.mjs` and the agent page. Server → browser `{t:'o', d}` output,
+  `{t:'x', session}` exit; browser → server `{t:'i', d}` input, `{t:'r', cols, rows}` resize. No polling fallback.
 
 ## UX
-- Film view gains a terminal pane + a **Run agent** control with three options:
-  1. **Claude** (default): `claude "follow brands/<slug>/docs/brief.md"`
+- The terminal is its own page, `#/run/<slug>`: runner picker + **Run agent** / **Stop agent** + status on top,
+  the terminal filling the rest, the film's 7 gates live in the rail. **Start film** lands here (it doesn't
+  start the agent: you pick and click). The film page has an agent strip at the top (Run agent / Open terminal)
+  and the copyable command. `#/agents` lists every session (see History and resume).
+- **Run agent** has three options:
+  1. **Claude** (default): `claude --session-id <uuid> --name <slug> "follow brands/<slug>/docs/brief.md"`
   2. **OpenCode**: `opencode --prompt "follow brands/<slug>/docs/brief.md"`
      (verified against opencode v2.0.16: `--prompt` opens the interactive TUI with the
      brief pre-filled; you press Enter in the pane to send it. Verified: it doesn't
@@ -36,9 +43,13 @@ a local terminal. Everything runs on localhost.
   the terminal just automates pasting it.
 
 ## Server
-- `POST /api/films/:slug/terminal` `{ runner: "claude" | "opencode" | "custom", command? }`
-  → creates (or reattaches) the session, returns a session id. Validated slug only;
-  custom commands run as-is (local tool, local user — no sandboxing by design).
+- `POST /api/films/:slug/terminal` `{ runner: "claude" | "opencode" | "custom", command?, cols, rows }`
+  or `{ resume: <history id> }` → creates (or reattaches) the session, returns it. Validated slug only;
+  custom commands run as-is (local tool, local user — no sandboxing by design). Requires a same-origin
+  `Origin` header (missing counts as foreign).
+- `WS /api/films/:slug/terminal/ws` → replays the scrollback (256 KB), then streams. Same-origin `Origin` required.
+- `GET /api/films/:slug/terminal/log` → the transcript as plain text (escape codes stripped, newest 200 KB).
+- Every request must carry our own `Host` (127.0.0.1/localhost:<port>), else 421 (DNS rebinding guard).
 - `GET /api/films/:slug/terminal` → session status + recent output (for reattach).
 - `DELETE /api/films/:slug/terminal` → kill the PTY.
 - PTY cwd = studio root. Env inherits the server's (user's keys, shell, PATH).
@@ -77,10 +88,24 @@ a local terminal. Everything runs on localhost.
   (preset or custom field). A general-purpose shell is out of scope.
 - No multi-user, no remote access, no session sharing. Ever.
 
-## Acceptance
+## Acceptance (status 2026-10-07)
 1. Click Run agent (Claude) on a film → agent boots in the pane, brief followed.
+   ✓ Claude boots in a real PTY and answers. ☐ Not yet seen in the browser pane (browser testing is banned here).
 2. Agent asks a question → user answers in the pane → agent proceeds.
-3. Refresh the page → session + scrollback intact.
-4. Kill → PTY dead, exit code shown; Run again → fresh session.
-5. OpenCode preset + a custom command both verified working at build time.
-6. `npm test` covers: session create/reattach/kill, slug validation, output log cap.
+   ✓ Over the real websocket: input reaches the PTY (`read` prompt answered). ☐ In the browser.
+3. Refresh the page → session + scrollback intact. ✓ Reattach replays the scrollback (server side).
+4. Kill → PTY dead, exit code shown; Run again → fresh session. ✓ Kill → 129, new session id on Run again.
+5. OpenCode preset + a custom command both verified working at build time. ✓ Both, in a real PTY.
+   OpenCode's own provider returned "Endpoint is unavailable" here; that's its config, not the studio.
+6. `npm test` covers: session create/reattach/kill, slug validation, output log cap. ✓ See below.
+7. (added) Resume: Claude by `--session-id`, OpenCode by first-message binding. ✓ Both verified for real.
+
+## Tests (`npm test`, 27 in total; terminal ones in `studio/terminal.test.mjs`, 6)
+- Preset/custom commands: `--session-id`/`--name`, `--resume`, `opencode --prompt` / `--session`, `<brief>` expansion.
+- Create, stream, input, resize, reattach while alive, film isolation, kill (129), respawn with a new id, transcript.
+- Spawn failure reported (500), not thrown.
+- Log cap (1 MB, cut at a line break) and scrollback cap.
+- Parent Claude session env stripped; user config (`CLAUDE_CODE_USE_*`) kept.
+- History across a simulated studio restart (`interrupted`), resume rules (custom → 400, unknown → 404).
+- OpenCode binding: two films at once, listed in the wrong order; older and other-directory sessions never bind.
+- Slug validation and Origin/Host checks are covered by the end-to-end runs (curl + ws client), not unit tests.

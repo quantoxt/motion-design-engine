@@ -14,7 +14,7 @@
 //   --audio FILE  |  out/mix.wav  |  out/music.wav (+ out/sfx.wav mixed on top, if present)
 // Relative --video/--audio paths resolve against --dir.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, isAbsolute, basename } from 'node:path';
 
 const sarg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
@@ -74,8 +74,17 @@ let m;
 try { m = JSON.parse(json); } catch { die(`could not read loudnorm measurement:\n${p1.slice(-800)}`); }
 console.log(`measured: ${m.input_i} LUFS, peak ${m.input_tp} dBTP`);
 
-for (const VIDEO of VIDEOS) {
-const { final: FINAL, posting: POSTING } = outputs(VIDEO);
+// Two renders can map to the same output (an old silent.mp4 next to silent_vertical.mp4, same size):
+// keep the newest render for each output name, say which was skipped.
+const jobs = new Map();
+for (const v of VIDEOS) {
+  const o = outputs(v), prev = jobs.get(o.final);
+  if (prev && statSync(prev.video).mtimeMs >= statSync(v).mtimeMs) { console.warn(`skipping ${basename(v)}: ${basename(prev.video)} is newer and makes the same ${basename(o.final)}`); continue; }
+  if (prev) console.warn(`skipping ${basename(prev.video)}: ${basename(v)} is newer and makes the same ${basename(o.final)}`);
+  jobs.set(o.final, { video: v, ...o });
+}
+
+for (const { video: VIDEO, final: FINAL, posting: POSTING } of jobs.values()) {
 // 3 · Pass 2: normalize (linear) + mux, video stream copied
 ff(['-y', '-i', VIDEO, '-i', AUDIO, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy',
   '-af', `loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`,

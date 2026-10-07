@@ -7,6 +7,18 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-07
 
+### Sync pass: code, docs and comments checked against each other
+- All `.mjs`/`.js` pass `node --check` (lib/*.js checked as ES modules), `beats.py` compiles, `npm test` 27/27.
+- `studio.mjs` header: resume in the terminal POST, OpenCode resume, the full `/media/` allowlist, `drift` on
+  the film GET, and an accurate "what it writes" note (it said it only wrote `_raw/`).
+- `docs/factory-map.md`: `package.json` entry; Home/Agents/Library routes in one place; library allowlist,
+  OpenCode resume and films.mjs drift/sync/attention described; rule 3 says `finalize.mjs --all-formats`.
+- `CLAUDE.md`: finalize's `--all-formats` and the final file naming (never rename: gates and Library read it).
+- `finalize.mjs`: when two renders would make the same final, the newest wins with a warning (L-003).
+- Removed dead CSS (`.handoff .cmd`). `.gitignore`: `__pycache__/`.
+- Every file in the repo is in the factory map, except the test files and fonts (covered by `*.test.mjs` and
+  `fonts/`) and `docs/reverse-pipeline-plan.md` (deliberately off the map). Every map entry exists.
+
 ### Added: git repo, README, .gitignore
 - `git init` (branch `master`, nothing committed yet). `.gitignore` keeps out `node_modules/`, every brand folder
   except `brands/_template/`, every filled brief except `_raw/brief-template.md`, a stray root `out/`, and
@@ -19,6 +31,8 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 - Stale `final.mp4` references fixed: `prompts/critique-pass.txt` (its contact-sheet commands would have failed on
   any new film; they now take the brand-named master), `docs/knowledge-base.md`. `studio.mjs` header comment
   describes the whole studio, not just the brief form.
+- `docs/terminal-spec.md` matches what was built: status line, the separate `#/run/<slug>` page, websocket
+  message format, all endpoints and guards, acceptance with ✓/☐ per item, and the test summary.
 - `docs/factory-map.md`: README and .gitignore in the tree, `terminal-spec.md` in the docs list, test summary
   (27), and which folders are kept out of git.
 

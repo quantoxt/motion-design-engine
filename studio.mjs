@@ -7,23 +7,25 @@
 //   GET  /api/briefs/:slug one brief's markdown (to reopen and edit)
 //   POST /api/briefs       { slug, md, overwrite? } → writes _raw/<slug>.md (409 if it exists)
 //   POST /api/films        { slug } → scaffolds brands/<slug>/ from brands/_template (409 if it exists)
-//   GET  /api/films/:slug  gate status, read from the files in brands/<slug>/
+//   GET  /api/films/:slug  gate status, read from the files in brands/<slug>/, + brief drift vs _raw/
 //   GET  /api/films/:slug/shotlist          shotlist text + its sha256 + current approval
 //   POST /api/films/:slug/shotlist/approve  { sha256 } of the version you read → docs/approvals.json
 //   POST /api/films/:slug/shotlist/revoke   withdraw the approval
-//   POST   /api/films/:slug/terminal  { runner, command?, cols, rows } → start (or reattach to) the agent session
+//   POST   /api/films/:slug/terminal  { runner, command?, cols, rows } or { resume } → start, resume, or reattach
 //   GET    /api/films/:slug/terminal  session status + recent output
 //   DELETE /api/films/:slug/terminal  kill the session
 //   GET  /api/dashboard      needs you (shotlist OKs, edited briefs, failed agents) · running agents · recent films
-//   GET  /api/agents         running sessions + every film's session history (resumable Claude sessions)
+//   GET  /api/agents         running sessions + every film's session history (Claude and OpenCode sessions resume)
 //   GET  /api/films/:slug/terminal/log  the film's transcript as plain text (escape codes stripped)
 //   POST /api/films/:slug/brief/sync    copy the edited _raw/<slug>.md into brands/<slug>/docs/brief.md
 //   GET  /api/library        brands with finished films (out/<slug>-<format>-<W>x<H>.mp4)
 //   GET  /api/library/:slug  one brand's finished films with size, duration, fps
-//   GET  /media/:slug/:file  a final or poster.png from brands/<slug>/out/ (Range for seeking; ?download=1 to save)
+//   GET  /media/:slug/:file  a final, poster.png, contact.png or animatic.mp4 from brands/<slug>/out/ (Range for seeking; ?download=1 to save)
 //   WS     /api/films/:slug/terminal/ws  live output out; { t:'i', d } input and { t:'r', cols, rows } resize in
 //
-// Local only: binds 127.0.0.1. Writes only _raw/<slug>.md with a validated slug.
+// Local only: binds 127.0.0.1, answers only its own Host, writes need a same-origin Origin.
+// Writes: _raw/<slug>.md, brands/<slug>/ (scaffold, docs/brief.md sync, docs/approvals.json,
+// out/terminal.log, out/agent-sessions.json). Slugs are validated; nothing else is written.
 import { createServer } from 'node:http';
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
 import { existsSync, createReadStream } from 'node:fs';

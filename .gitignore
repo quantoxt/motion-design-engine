@@ -21,3 +21,6 @@ _raw/*
 # OS / editor noise
 .DS_Store
 *.swp
+
+# Python bytecode (beats.py)
+__pycache__/

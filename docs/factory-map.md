@@ -14,20 +14,23 @@ MOTION DESIGN/
     hand.js                 # hand-drawn SVG ink: trace(), boil(), ink(), strokeLine()
     project.js              # fake-3D: rot/iso/cube/drawCube/turntable/parallax (pure math)
     serve.mjs               # static server; serves --dir, falls back to engine root for /lib/*
-  studio.mjs                # web UI: `npm run studio` → 127.0.0.1:4321: write/reopen briefs → _raw/<slug>.md,
-                            # Start film → brands/<slug>/, live gate status, Run agent (terminal pane over websocket)
+  package.json              # deps (node-pty, ws, xterm, playwright), `npm run studio`, `npm test`; Node >= 20
+  studio.mjs                # web UI server: `npm run studio` → 127.0.0.1:4321. Briefs → _raw/<slug>.md, Start film,
+                            # gates + approvals, agent terminals (websocket), Library media. Endpoint list in its header
   studio/
-    index.html, app.mjs     # UI: briefs list (#/), brief editor (#/brief/<slug>), film gates (#/film/<slug>),
-                            # agent terminal page (#/run/<slug>), Film Library (#/library, #/library/<slug>),
-                            # Home dashboard + alerts (#/), Agents (#/agents)
+    index.html, app.mjs     # UI: Home (#/: needs you, running, recent, briefs; navbar badge + alerts),
+                            # brief editor (#/brief/<slug>), film gates (#/film/<slug>), agent terminal (#/run/<slug>),
+                            # Agents (#/agents), Film Library (#/library, #/library/<slug>)
     library.mjs             # Library: finished films per brand (finalize's naming), ffprobe metadata,
-                            # the allowlist for /media/ (finals + poster.png only)
+                            # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4; nothing else)
     brief.mjs               # template ⇄ form model: parse / serialize / readBack / filmSettings (shared with tests)
     films.mjs               # Start film (scaffold brands/<slug>/ from _template), gate status from files,
-                            # shotlist approval → brands/<slug>/docs/approvals.json (sha256 of the approved text)
+                            # shotlist approval → brands/<slug>/docs/approvals.json (sha256 of the approved text),
+                            # brief drift + sync (_raw/ → docs/brief.md), "needs you" items for Home
     terminal.mjs            # agent sessions: one node-pty PTY per film, scrollback replay,
                             # transcript → brands/<slug>/out/terminal.log (1 MB cap), session history +
-                            # Claude resume ids → out/agent-sessions.json. Spec: docs/terminal-spec.md
+                            # resume ids (Claude --session-id, OpenCode found by first message) → out/agent-sessions.json.
+                            # Spec: docs/terminal-spec.md
     fonts/                  # Bricolage Grotesque woff2 + OFL (bundled, works offline)
     *.test.mjs              # `npm test` (27): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
                             # terminal sessions + resume (fake PTY / fake OpenCode), library + media allowlist (no browser)
@@ -84,7 +87,7 @@ MOTION DESIGN/
 3. New film: copy `brands/_template/` → `brands/<name>/`, follow the skill pipeline:
    assets → style_guide → shotlist (WAIT for OK) → animatic (pacing) →
    code → shots (beats + strips) → critique 4 rounds (8+) → `--all-formats` →
-   `finalize.mjs` → deliver + lessons.
+   `finalize.mjs --all-formats` (→ `out/<brand>-<format>-<W>x<H>.mp4`) → deliver + lessons.
 4. `brands/quantoxt/` is completed work — read it, never write to it.
 5. Every run appends its measured lessons to `docs/LESSONS.md`.
 6. Every engine fix gets a `docs/bug-docs.md` entry (Symptom / Cause / Fix / Verified),

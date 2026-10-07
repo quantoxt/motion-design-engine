@@ -25,7 +25,9 @@
 - Fix pacing with `--animatic` (half size, 15fps, no blur, CRF 28) before full
   renders. `--all-formats` renders every orientation in `film.json`.
 - Finish with `node finalize.mjs --dir brands/<name>` (two-pass loudnorm −14 LUFS,
-  ebur128 confirm, CRF-20 posting copy). Never hand-mux.
+  ebur128 confirm, CRF-20 posting copy; `--all-formats` for every `silent_*.mp4`). Never hand-mux.
+  Finals are named `out/<brand>-<format>-<W>x<H>.mp4`: the studio's gates and Library read
+  that name, so never rename them.
 - Encode H.264 yuv420p, CRF 16. Grain-heavy finals run large — also export CRF 20 for posting.
 - Time 1s of film and multiply before quoting a render duration. Never estimate blind.
 

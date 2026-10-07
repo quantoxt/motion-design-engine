@@ -10,6 +10,14 @@ Severity: **high** = breaks a real job · **med** = breaks a common option · **
 
 ## 2026-10-07 · Film Library work
 
+### L-003 · `finalize.mjs --all-formats` · low
+- **Symptom:** an old plain `out/silent.mp4` next to `silent_vertical.mp4` (same size) both mapped to
+  `<brand>-vertical-…mp4`: the file was finalized twice and whichever sorted last won, even if it was the stale one.
+- **Cause:** L-001's `--all-formats` took every `silent*.mp4` without checking for duplicate outputs.
+- **Fix:** renders are grouped by output name; the newest render wins and the skipped one is named in a warning.
+- **Verified:** scratch brand with a stale `silent.mp4` (1 h older) next to `silent_wide.mp4`: warning printed,
+  4 outputs, the wide master built from `silent_wide.mp4`.
+
 ### L-002 · `prompts/critique-pass.txt` · med
 - **Symptom:** after L-001 renamed finals, the critique prompt's contact-sheet commands still read `out/final.mp4`,
   which new films no longer have: ffmpeg would fail at the critique step.
