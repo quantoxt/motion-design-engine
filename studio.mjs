@@ -1,7 +1,7 @@
-// Studio: local web UI for the factory. Step 1 = the brief form.
-// node studio.mjs [--port 4321] [--no-open]   →  http://127.0.0.1:4321
+// Studio: local web UI for the factory: briefs, films and their gates, agent terminals,
+// the Film Library. node studio.mjs [--port 4321] [--no-open]   →  http://127.0.0.1:4321
 //
-//   GET  /                 the form (studio/index.html)
+//   GET  /                 the UI (studio/index.html; views are hash-routed in studio/app.mjs)
 //   GET  /api/template     _raw/brief-template.md (the form is generated from it)
 //   GET  /api/briefs       saved briefs in _raw/ (+ whether a film exists for each)
 //   GET  /api/briefs/:slug one brief's markdown (to reopen and edit)

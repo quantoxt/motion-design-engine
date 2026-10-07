@@ -10,8 +10,10 @@ shots, blurry scaled text, a dead beat with nothing happening, a stutter at the 
 
 Fix them, re-render only the affected seconds, show me the new contact sheet and new scores.
 
-Contact sheet cmds:
-  ffmpeg -i out/final.mp4 -vf "fps=2,scale=270:-1,tile=6x5" -frames:v 1 out/contact.png
-  ffmpeg -ss 4.1 -i out/final.mp4 -vf "scale=320:-1,tile=12x1" -frames:v 1 out/strip.png
-  ffmpeg -i out/final.mp4 -vf "fps=1,scale=360:-1,tile=5x3" -frames:v 1 out/phone.png
-  ffmpeg -stream_loop 1 -i out/final.mp4 -c copy out/loop_check.mp4
+Contact sheet cmds (run inside brands/<brand>/; F = the finalized master, one per format,
+e.g. out/acme-vertical-1080x1920.mp4 — before finalize, use the silent render instead):
+  F=out/<brand>-<format>-<W>x<H>.mp4
+  ffmpeg -i "$F" -vf "fps=2,scale=270:-1,tile=6x5" -frames:v 1 out/contact.png
+  ffmpeg -ss 4.1 -i "$F" -vf "scale=320:-1,tile=12x1" -frames:v 1 out/strip.png
+  ffmpeg -i "$F" -vf "fps=1,scale=360:-1,tile=5x3" -frames:v 1 out/phone.png
+  ffmpeg -stream_loop 1 -i "$F" -c copy out/loop_check.mp4

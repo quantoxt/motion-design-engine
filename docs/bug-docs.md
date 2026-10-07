@@ -10,6 +10,14 @@ Severity: **high** = breaks a real job · **med** = breaks a common option · **
 
 ## 2026-10-07 · Film Library work
 
+### L-002 · `prompts/critique-pass.txt` · med
+- **Symptom:** after L-001 renamed finals, the critique prompt's contact-sheet commands still read `out/final.mp4`,
+  which new films no longer have: ffmpeg would fail at the critique step.
+- **Cause:** the rename was applied to code and docs found by grep, but the first sweep missed `prompts/`.
+- **Fix:** the commands take `F=out/<brand>-<format>-<W>x<H>.mp4` (or the silent render before finalize).
+- **Verified:** repo-wide grep for `final.mp4` / `final_posting` now only hits the changelog, this log and
+  the frozen quantoxt folder.
+
 ### L-001 · `finalize.mjs` · high
 - **Symptom:** a film with several formats could only keep one finished file: every run wrote `out/final.mp4` and
   `out/final_posting.mp4`, so finalizing `silent_square.mp4` after `silent_vertical.mp4` silently overwrote the

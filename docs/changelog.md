@@ -16,6 +16,9 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
   optional numpy/librosa), setup, the studio flow, engine commands, layout, what's not in the repo.
 - `package.json`: `engines.node >=20`, `private`, description; `playwright` moved to `dependencies` (the
   renderers need it at run time, so `npm install --omit=dev` no longer breaks rendering).
+- Stale `final.mp4` references fixed: `prompts/critique-pass.txt` (its contact-sheet commands would have failed on
+  any new film; they now take the brand-named master), `docs/knowledge-base.md`. `studio.mjs` header comment
+  describes the whole studio, not just the brief form.
 - `docs/factory-map.md`: README and .gitignore in the tree, `terminal-spec.md` in the docs list, test summary
   (27), and which folders are kept out of git.
 

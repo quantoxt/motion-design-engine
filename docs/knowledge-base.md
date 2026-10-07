@@ -62,7 +62,7 @@ Source: Movez 12-step course (x.com/i/article/2104216919033192746) + related tre
 
 ## Ship
 - Layout function not fixed pixels; render 9:16, 1:1, 16:9 in parallel. Reframe, don't crop.
-- Package as skill (/motion-reel): collect inputs → gather assets → style_guide → beats → shotlist (wait OK) → seek(t)+springs → critique 3 rounds → render+sfx+mix → deliver final.mp4/contact.png/poster.png + "what I'd improve".
+- Package as skill (/motion-reel): collect inputs → gather assets → style_guide → beats → shotlist (wait OK) → seek(t)+springs → critique 3 rounds → render+sfx+mix → deliver <brand>-<format>-<W>x<H>.mp4 (finalize.mjs)/contact.png/poster.png + "what I'd improve".
 - Revenue anchor: ~$1,000/video replaced in <30min; sell music+mascot+features+offer+any language+3 edits.
 
 ## Repos
