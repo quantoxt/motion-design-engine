@@ -5,7 +5,8 @@ import { mkdtempSync, cpSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, films, briefDrift, syncBrief, attention, makeVersion, splitVersion, versions } from './films.mjs';
+import { writeResult } from '../lib/gate.mjs';
+import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, approvePrimary, revokePrimary, films, briefDrift, syncBrief, attention, makeVersion, splitVersion, versions } from './films.mjs';
 import { execFileSync } from 'node:child_process';
 import { parse, serialize } from './brief.mjs';
 
@@ -46,7 +47,7 @@ test('scaffold refuses to overwrite and needs a saved brief', async () => {
 test('gates advance with the files the pipeline writes', async () => {
   const dir = join(root, 'brands/acme');
   let g = await gates(root, 'acme');
-  assert.deepEqual(g.gates.map((x) => x.state), ['done', 'current', 'todo', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(g.gates.map((x) => x.state), ['done', 'current', 'todo', 'todo', 'todo', 'todo', 'todo', 'todo', 'todo']);
 
   writeFileSync(join(dir, 'assets/logo.png'), 'x');
   g = await gates(root, 'acme');
@@ -61,16 +62,65 @@ test('gates advance with the files the pipeline writes', async () => {
   const r = await shotlist(root, 'acme');
   assert.equal((await approveShotlist(root, 'acme', r.sha256)).status, 200);
   g = await gates(root, 'acme');
-  assert.deepEqual(g.gates.map((x) => x.state), ['done', 'done', 'done', 'done', 'current', 'todo', 'todo']);
+  assert.deepEqual(g.gates.map((x) => x.state), ['done', 'done', 'done', 'done', 'current', 'todo', 'todo', 'todo', 'todo']);
   assert.match(g.gates[4].evidence, /3 of 4/);
 
   writeFileSync(join(dir, 'docs/review_log.md'), '## Round 1\n## Round 2\n## Round 3\n## Round 4\n');
-  writeFileSync(join(dir, 'out/silent_vertical.mp4'), 'x');
-  for (const f of ['acme-vertical-1080x1920.mp4', 'contact.png', 'poster.png']) writeFileSync(join(dir, 'out', f), 'x');
   g = await gates(root, 'acme');
-  assert.equal(g.done, 7);
-  assert.match(g.gates[6].evidence, /acme-vertical-1080x1920\.mp4/);
+  assert.equal(g.gates[5].id, 'checks');
+  assert.equal(g.gates[5].state, 'current');
+  assert.match(g.gates[5].evidence, /check\.mjs not run yet · holds\.mjs not run yet/);
+  writeResult(dir, 'check', { ok: false, formats: { vertical: { failures: [{ kind: 'click-target', t: 24, msg: 'click at 24s misses "unlock" by (0, 38)px' }] } } });
+  writeResult(dir, 'holds', { ok: true, pops: [], holds: [] });
+  g = await gates(root, 'acme');
+  assert.equal(g.gates[5].state, 'current');
+  assert.match(g.gates[5].evidence, /check\.mjs 1 problem: 24\.00s click at 24s misses "unlock"/);
+  writeResult(dir, 'check', { ok: true, formats: {} });
+  assert.equal((await gates(root, 'acme')).gates[5].state, 'done');
+  writeFileSync(join(dir, 'index.html'), readFileSync(join(dir, 'index.html'), 'utf8') + '\n<!-- edit -->');
+  g = await gates(root, 'acme');
+  assert.equal(g.gates[5].state, 'current', 'editing the film makes the results stale');
+  assert.match(g.gates[5].evidence, /out of date/);
+  writeResult(dir, 'check', { ok: true, formats: {} });
+  writeResult(dir, 'holds', { ok: true, pops: [], holds: [] });
+
+  // Primary render: watched and approved before the other formats.
+  g = await gates(root, 'acme');
+  assert.deepEqual([g.gates[6].id, g.gates[6].state, g.gates[6].approval], ['primary', 'current', 'missing']);
+  writeFileSync(join(dir, 'out/silent_vertical.mp4'), 'x');
+  g = await gates(root, 'acme');
+  assert.equal(g.gates[6].approval, 'waiting');
+  assert.equal((await approvePrimary(root, 'acme', 'old-stamp')).status, 409, 'only approve the render you watched');
+  assert.equal((await approvePrimary(root, 'acme', g.gates[6].stamp)).status, 200);
+  g = await gates(root, 'acme');
+  assert.deepEqual([g.gates[6].state, g.gates[6].approval, g.gates[7].state], ['done', 'approved', 'current']);
+  assert.equal(g.gates[7].evidence, 'still to render: out/silent_square.mp4', 'the formats the brief asked for');
+  writeFileSync(join(dir, 'out/silent_vertical.mp4'), 'xx');   // re-rendered after the OK
+  assert.equal((await gates(root, 'acme')).gates[6].approval, 'stale');
+  assert.equal((await approvePrimary(root, 'acme', (await gates(root, 'acme')).gates[6].stamp)).status, 200);
+  assert.equal((await revokePrimary(root, 'acme')).status, 200);
+  assert.equal((await gates(root, 'acme')).gates[6].approval, 'waiting');
+  assert.equal((await approvePrimary(root, 'acme', (await gates(root, 'acme')).gates[6].stamp)).status, 200);
+
+  for (const f of ['silent_square.mp4', 'silent_wide.mp4', 'acme-vertical-1080x1920.mp4', 'contact.png', 'poster.png']) writeFileSync(join(dir, 'out', f), 'x');
+  g = await gates(root, 'acme');
+  assert.equal(g.done, 9);
+  assert.match(g.gates[8].evidence, /acme-vertical-1080x1920\.mp4/);
   assert.ok(g.gates.every((x) => x.updated), 'timestamps on done gates');
+  for (const n of ['check', 'holds']) rmSync(join(dir, 'out', `${n}.json`));
+  g = await gates(root, 'acme');
+  assert.equal(g.gates[5].state, 'done', 'a film rendered before the checks existed is not blocked');
+  assert.match(g.gates[5].evidence, /before the machine checks existed/);
+  const ap = JSON.parse(readFileSync(join(dir, 'docs/approvals.json'), 'utf8')); delete ap.primary;
+  writeFileSync(join(dir, 'docs/approvals.json'), JSON.stringify(ap));
+  g = await gates(root, 'acme');
+  assert.equal(g.gates[6].state, 'done', 'nor by the primary review');
+  assert.match(g.gates[6].evidence, /before the primary review existed/);
+  writeFileSync(join(dir, 'out/render-gate.json'), JSON.stringify({ skipped: true, at: '2026-10-07T20:00:00Z' }));
+  g = await gates(root, 'acme');
+  assert.equal(g.gates[5].state, 'current', '--skip-checks is shown, not hidden');
+  assert.match(g.gates[5].evidence, /forced with --skip-checks/);
+  rmSync(join(dir, 'out/render-gate.json'));
   assert.equal(await gates(root, 'missing'), null);
 });
 
@@ -133,6 +183,7 @@ test('brief drift, sync, and what needs you', async () => {
 test('a delivered film is never synced: its brief change makes v2, seeded from v1', async () => {
   const v1 = join(root, 'brands/acme');
   writeFileSync(join(v1, 'docs/style_guide.md'), '# Style guide — Acme (researched)\n');
+  writeFileSync(join(v1, 'docs/lessons.md'), '- grain at CRF 16 doubles file size\n');
   writeFileSync(join(v1, 'film.json'), JSON.stringify({ ...JSON.parse(readFileSync(join(v1, 'film.json'), 'utf8')), sub: 6 }));
   // the brief changes after delivery: 20s → 30s
   const model = parse(TEMPLATE);
@@ -157,6 +208,7 @@ test('a delivered film is never synced: its brief change makes v2, seeded from v
   assert.equal(readFileSync(join(v2, 'docs/brief.md'), 'utf8'), readFileSync(join(root, '_raw/acme.md'), 'utf8'));
   assert.ok(existsSync(join(v2, 'assets/logo.png')), 'assets carried over');
   assert.match(readFileSync(join(v2, 'docs/style_guide.md'), 'utf8'), /researched/);
+  assert.match(readFileSync(join(v2, 'docs/lessons.md'), 'utf8'), /grain/, 'lessons carry over');
   const film = JSON.parse(readFileSync(join(v2, 'film.json'), 'utf8'));
   assert.equal(film.sub, 6, 'v1 tuning kept');
   assert.equal(film.dur, 30, 'new brief applied');

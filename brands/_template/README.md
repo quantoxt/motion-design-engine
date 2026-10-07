@@ -18,6 +18,8 @@ brands/<name>/
 ```
 
 Gates: assets → style_guide → shotlist + questions → OK → animatic (pacing) →
-code → shots (beats + strips) → critique 4 rounds (8+) → full render
+code → checks by kind of bug (CLAUDE.md loop) → critique 4 rounds (8+) → machine checks pass
+(check.mjs + holds.mjs; the renderer refuses otherwise) → primary format render → human OK in the
+studio → other formats
 (--all-formats for every orientation) → finalize.mjs (−14 LUFS + posting copy)
-→ deliver `<brand>-<format>-<W>x<H>.mp4` (one per format) `+ contact.png + poster.png` → lessons to `docs/LESSONS.md`.
+→ deliver `<brand>-<format>-<W>x<H>.mp4` (one per format) `+ contact.png + poster.png` → lessons to `docs/lessons.md`.

@@ -28,7 +28,7 @@ npm install
 npm install-scripts approve node-pty   # npm blocks native build scripts by default
 npm rebuild node-pty
 npx playwright install chromium
-npm test                                # should print: pass 29, fail 0
+npm test                                # should print: pass 46, fail 0
 ```
 
 If `node-pty` isn't built, the studio still runs; only the in-browser terminal is disabled and
@@ -48,7 +48,11 @@ npm run studio        # → http://127.0.0.1:4321 (opens your browser; --no-open
    questions in the pane. (OpenCode fills the prompt in; press Enter to send it.)
 4. **Approve the shotlist.** Home shows what needs you. Read the shotlist on the film page and approve
    it; the agent waits for that before writing code.
-5. **Watch it in the Library.** Finished films appear per brand; click one to play it full screen.
+5. **Machine checks.** Before the full render, the agent runs `check.mjs` (geometry) and `holds.mjs` (pops and dead
+   holds). The renderer refuses a full render until both pass on the current code; the film page shows the results.
+6. **Approve the primary render.** The agent renders the main format first. Watch it on the film page and approve
+   it; only then can the other formats render (they cost the most time, so mistakes are caught before them).
+7. **Watch it in the Library.** Finished films appear per brand; click one to play it full screen.
 
 **Edited a brief after its film was delivered?** The studio offers **Make new version**: it creates
 `brands/<brand>-v2/` from the new brief, carrying over v1's assets and style guide, and runs the
@@ -65,7 +69,12 @@ Without the studio, open the project in Claude Code and say `follow _raw/<brand>
 ```sh
 node render-parallel.mjs --dir brands/<brand> --animatic      # fast pacing draft
 node render-parallel.mjs --dir brands/<brand> --all-formats   # full render, every format in film.json
+node render-parallel.mjs --dir brands/<brand> --all-formats --formats vertical   # only the named formats
 node shots.mjs beats --dir brands/<brand>                     # critique stills
+node shots.mjs events --dir brands/<brand> --format all       # clicks, swaps, transforms, every format
+node render-parallel.mjs --dir brands/<brand> --scan          # ~3 min input for holds.mjs
+node holds.mjs --dir brands/<brand>                           # one-frame pops + dead holds
+node check.mjs --dir brands/<brand>                           # clicks on target, no overflow, nothing cut off
 node finalize.mjs --dir brands/<brand> --all-formats          # mix, −14 LUFS, final + posting copy
 ```
 

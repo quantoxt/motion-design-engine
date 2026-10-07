@@ -22,7 +22,7 @@ a local terminal. Everything runs on localhost.
 
 ## UX
 - The terminal is its own page, `#/run/<slug>`: runner picker + **Run agent** / **Stop agent** + status on top,
-  the terminal filling the rest, the film's 7 gates live in the rail. **Start film** lands here (it doesn't
+  the terminal filling the rest, the film's 9 gates live in the rail. **Start film** lands here (it doesn't
   start the agent: you pick and click). The film page has an agent strip at the top (Run agent / Open terminal)
   and the copyable command. `#/agents` lists every session (see History and resume).
 - **Run agent** has three options:

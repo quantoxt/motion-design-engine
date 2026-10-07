@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse, readBack, filmSettings } from './brief.mjs';
 import { finals } from './library.mjs';
+import { CHECKS, readResult, primaryReview, fingerprint } from '../lib/gate.mjs';
 
 const mtime = async (p) => { try { return (await stat(p)).mtime.toISOString(); } catch { return null; } };
 const files = async (dir) => { try { return (await readdir(dir, { withFileTypes: true })).filter((d) => d.isFile() && !d.name.startsWith('.')).map((d) => d.name); } catch { return []; } };
@@ -46,6 +47,29 @@ export async function revokeShotlist(root, slug) {
   return { status: 200 };
 }
 
+// Primary render approval: you watch the primary format's render and OK it; the renderer then allows
+// the other formats. The client sends the render stamp it showed you, so you only approve what you saw.
+export async function approvePrimary(root, slug, seenStamp) {
+  const dir = join(root, 'brands', slug);
+  if (!existsSync(dir)) return { status: 404, error: `brands/${slug}/ doesn't exist.` };
+  const r = primaryReview(dir);
+  if (r.state === 'missing') return { status: 404, error: `No primary render yet (out/${r.primary.file}).` };
+  if (seenStamp !== r.stamp) return { status: 409, error: 'The primary render changed since you loaded it. Watch the new one, then approve.' };
+  const approvals = await readApprovals(dir);
+  approvals.primary = { approved: true, file: r.primary.file, stamp: r.stamp, fingerprint: fingerprint(dir), at: new Date().toISOString() };
+  await writeFile(join(dir, 'docs', 'approvals.json'), JSON.stringify(approvals, null, 2) + '\n');
+  return { status: 200, approval: approvals.primary };
+}
+
+export async function revokePrimary(root, slug) {
+  const dir = join(root, 'brands', slug);
+  if (!existsSync(dir)) return { status: 404, error: `brands/${slug}/ doesn't exist.` };
+  const approvals = await readApprovals(dir);
+  delete approvals.primary;
+  await writeFile(join(dir, 'docs', 'approvals.json'), JSON.stringify(approvals, null, 2) + '\n');
+  return { status: 200 };
+}
+
 // Copy brands/_template → brands/<slug>, put the brief in docs/brief.md, and fill
 // film.json from the brief (duration, formats, tempo). Refuses to touch an existing folder.
 export async function scaffold(root, slug) {
@@ -82,6 +106,30 @@ export async function gates(root, slug) {
   const approved = shot != null && approval?.sha256 === sha256(shot);
   const shotState = shot == null ? 'missing' : approved ? 'approved' : approval ? 'stale' : 'waiting';
 
+  // Machine checks (check.mjs + holds.mjs results on the current code). A film rendered before the checks
+  // existed has neither result and no skip record: shown as not run, not as blocking.
+  const results = CHECKS.map((n) => readResult(dir, n));
+  let skipped = null;
+  try { skipped = JSON.parse(await readFile(join(dir, 'out', 'render-gate.json'), 'utf8')); } catch {}
+  const legacy = silents.length > 0 && !skipped && results.every((r) => r.state === 'missing');
+  const checksPassed = results.every((r) => r.state === 'passed');
+  const firstFail = (r) => {
+    const fs = r.name === 'check' ? Object.values(r.result.formats ?? {}).flatMap((f) => f.failures) : [...(r.result.pops ?? []), ...(r.result.holds ?? [])];
+    const n = fs.length, f = fs[0];
+    const what = !f ? '' : f.msg ? `: ${f.t != null ? `${f.t.toFixed(2)}s ` : ''}${f.msg}` : f.dur != null ? `: hold ${f.from}–${f.to}s` : `: pop at ${f.t}s`;
+    return `${n} problem${n === 1 ? '' : 's'}${what}`;
+  };
+  const checkEvidence = legacy ? 'not run: this film was rendered before the machine checks existed'
+    : [...results.map((r) => `${r.name}.mjs ${(r.state === 'failed' ? firstFail(r) : { missing: 'not run yet', stale: 'out of date (the film changed since)', passed: 'passed' }[r.state])}`),
+      ...(skipped ? [`full render forced with --skip-checks (${skipped.at})`] : [])].join(' · ');
+
+  // Primary render review (lib/gate.mjs) and the formats still to render.
+  const primRev = primaryReview(dir);
+  const primaryDone = primRev.state === 'approved' || legacy;
+  let filmJson = {};
+  try { filmJson = JSON.parse(await readFile(join(dir, 'film.json'), 'utf8')); } catch {}
+  const formatsLeft = (filmJson.formats ?? []).map((f) => f.name).filter((n) => !silents.includes(`silent_${n}.mp4`));
+
   const list = [
     { id: 'brief', name: 'Brief', done: existsSync(join(dir, 'docs', 'brief.md')), evidence: 'docs/brief.md' },
     { id: 'assets', name: 'Assets & style guide', done: assets.length > 0 && guide != null && guide !== tplGuide,
@@ -92,16 +140,27 @@ export async function gates(root, slug) {
       note: shotState === 'missing' ? 'Once it’s written, read it here and approve it. The agent won’t write code before that.' : null },
     { id: 'animatic', name: 'Animatic', done: has('animatic.mp4'), evidence: 'out/animatic.mp4' },
     { id: 'critique', name: 'Critique rounds', done: rounds >= 4, evidence: `docs/review_log.md · ${rounds} of 4 rounds` },
-    { id: 'render', name: 'Full render', done: silents.length > 0, evidence: silents.length ? silents.map((f) => `out/${f}`).join(', ') : 'out/silent.mp4' },
+    { id: 'checks', name: 'Machine checks', done: checksPassed || legacy, evidence: checkEvidence,
+      note: checksPassed || legacy ? null : 'Geometry (check.mjs) and pops/holds (holds.mjs) must pass on the current code before the full render starts.' },
+    { id: 'primary', name: 'Primary render', done: primaryDone, approval: legacy ? undefined : primRev.state, file: primRev.primary.file, stamp: primRev.stamp,
+      evidence: legacy ? 'not reviewed: this film was rendered before the primary review existed'
+        : { missing: `out/${primRev.primary.file} not rendered yet`, waiting: `out/${primRev.primary.file} · waiting for your OK`,
+          stale: `out/${primRev.primary.file} · re-rendered or the film changed since you approved it, needs your OK again`,
+          approved: `out/${primRev.primary.file} · approved by you` }[primRev.state],
+      note: primaryDone ? null : `Watch the ${primRev.primary.name ?? 'primary'} render and approve it. The other formats only render after your OK.` },
+    { id: 'render', name: 'All formats', done: primaryDone && formatsLeft.length === 0,
+      evidence: formatsLeft.length ? `still to render: ${formatsLeft.map((f) => `out/silent_${f}.mp4`).join(', ')}` : silents.map((f) => `out/${f}`).join(', ') || 'out/silent.mp4' },
     { id: 'final', name: 'Final delivery', done: masters.length > 0 && has('contact.png') && has('poster.png'),
       evidence: [masters.length ? `✓ ${masters.map((m) => m.file).join(', ')}` : `· ${slug}-<format>-<W>x<H>.mp4`,
         ...['contact.png', 'poster.png'].map((f) => `${has(f) ? '✓' : '·'} ${f}`)].join('  ') },
   ];
   const paths = { brief: 'docs/brief.md', assets: 'docs/style_guide.md', shotlist: 'docs/shotlist.md', animatic: 'out/animatic.mp4',
-    critique: 'docs/review_log.md', render: silents[0] ? `out/${silents[0]}` : 'out/silent.mp4', final: masters[0] ? `out/${masters[0].file}` : 'out/poster.png' };
+    critique: 'docs/review_log.md', checks: legacy && silents[0] ? `out/${silents[0]}` : 'out/check.json',
+    primary: `out/${primRev.primary.file}`, render: silents[0] ? `out/${silents[0]}` : 'out/silent.mp4', final: masters[0] ? `out/${masters[0].file}` : 'out/poster.png' };
   let current = false;
   for (const g of list) {
-    g.updated = g.done ? (g.id === 'shotlist' ? approval.at : await mtime(join(dir, paths[g.id]))) : null;
+    g.updated = g.done ? (g.id === 'shotlist' ? approval.at : g.id === 'primary' && primRev.approval?.at && !legacy ? primRev.approval.at
+      : await mtime(join(dir, paths[g.id]))) : null;
     g.state = g.done ? 'done' : current ? 'todo' : 'current';
     if (!g.done) current = true;
   }
@@ -187,7 +246,7 @@ export function briefChanges(oldMd, newMd) {
 }
 
 // Make the next version of a delivered film whose brief has changed (unchanged brief → 409): brands/<brand>-vN/ from the current brief, seeded
-// with the previous version's research (assets/, style guide, film.json tuning) so the agent
+// with the previous version's research (assets/, style guide, docs/lessons.md, film.json tuning) so the agent
 // doesn't redo it, plus docs/previous-version.md saying where v(N-1) is and what changed.
 export async function makeVersion(root, slug) {
   const { base } = splitVersion(root, slug);
@@ -209,10 +268,12 @@ export async function makeVersion(root, slug) {
 
   await cp(join(root, 'brands', '_template'), dest, { recursive: true, errorOnExist: true, force: false });
   await writeFile(join(dest, 'docs', 'brief.md'), raw);
-  // Research carried over: assets and the style guide (the agent replaces what no longer fits).
+  // Research carried over: assets, the style guide and lessons (the agent replaces what no longer fits).
   if (existsSync(join(src, 'assets'))) await cp(join(src, 'assets'), join(dest, 'assets'), { recursive: true, force: true });
   const guide = await read(join(src, 'docs', 'style_guide.md'));
   if (guide != null) await writeFile(join(dest, 'docs', 'style_guide.md'), guide);
+  const lessons = await read(join(src, 'docs', 'lessons.md'));
+  if (lessons != null) await writeFile(join(dest, 'docs', 'lessons.md'), lessons);
   // film.json: the previous version's tuning, with the new brief's duration/formats/tempo on top.
   const model = parse(await readFile(join(root, '_raw', 'brief-template.md'), 'utf8'));
   let film;
@@ -240,7 +301,7 @@ Also worth reading in brands/${prev.slug}/: \`docs/shotlist.md\`, \`index.html\`
 - Removed: ${list(diff.removed)}
 
 ## What to do
-Run the full pipeline for v${version}: check the carried-over assets and style guide against the
+Run the full pipeline for v${version}: read \`docs/lessons.md\` first, check the carried-over assets and style guide against the
 changes above, then a new shotlist (it needs a fresh approval), animatic, critique, render, finalize.
 Finals are named \`${next}-<format>-<W>x<H>.mp4\`. Say which parts of v${prev.version} you're reusing.
 `);
@@ -270,6 +331,11 @@ export async function attention(root, history = () => []) {
       items.push(g.gates.at(-1).done
         ? { slug, kind: 'version', key: `version:${slug}`, text: 'You edited the brief after this film was delivered. Make a new version to apply it.' }
         : { slug, kind: 'brief', key: `brief:${slug}`, text: 'You edited the brief after the film started. The film still has the old copy.' });
+    }
+    const prim = g.gates.find((x) => x.id === 'primary');
+    if (prim.approval === 'waiting' || prim.approval === 'stale') {
+      items.push({ slug, kind: 'primary', key: `primary:${slug}:${prim.stamp}`,
+        text: prim.approval === 'stale' ? 'The primary render changed after you approved it. Watch it again.' : 'The primary render is ready: watch it, then approve the other formats.' });
     }
     const last = history(slug)[0];
     if (last && (last.state === 'interrupted' || (last.state === 'exited' && last.exitCode !== 0 && last.exitCode !== 129))) {

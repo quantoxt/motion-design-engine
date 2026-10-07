@@ -9,11 +9,12 @@
 // See docs/parallel-render.md.
 import { chromium } from 'playwright';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { availableParallelism } from 'node:os';
 import { serve } from './lib/serve.mjs';
+import { blockers, formatBlockers } from './lib/gate.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? Number(process.argv[i + 1]) : d; };
 const sarg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
@@ -22,30 +23,57 @@ const DIR = resolve(sarg('dir', '.'));
 const HERE = dirname(fileURLToPath(import.meta.url));
 const film = existsSync(join(DIR, 'film.json')) ? JSON.parse(readFileSync(join(DIR, 'film.json'), 'utf8')) : {};
 
-// --all-formats: re-invoke once per film.json format (flags are inherited)
+// --all-formats: re-invoke once per film.json format (flags are inherited).
+// --formats a,b limits it to those names (primary first, the rest after review).
 if (flag('all-formats')) {
-  const formats = film.formats ?? [{ name: 'main', w: film.w ?? 1080, h: film.h ?? 1920 }];
-  // Drop --all-formats and any --w/--h/--out (+ value): each format sets its own.
-  const argv = process.argv.slice(2), drop = new Set(['--w', '--h', '--out']);
+  const all = film.formats ?? [{ name: 'main', w: film.w ?? 1080, h: film.h ?? 1920 }];
+  const pick = sarg('formats', '').split(',').map((s) => s.trim()).filter(Boolean);
+  const unknown = pick.filter((n) => !all.some((f) => f.name === n));
+  if (unknown.length) { console.error(`unknown format(s): ${unknown.join(', ')} (film.json has ${all.map((f) => f.name).join(', ')})`); process.exit(1); }
+  const formats = pick.length ? all.filter((f) => pick.includes(f.name)) : all;
+  // Drop --all-formats and any --w/--h/--out/--formats (+ value): each format sets its own.
+  const argv = process.argv.slice(2), drop = new Set(['--w', '--h', '--out', '--formats']);
   const base = argv.filter((a, i) => a !== '--all-formats' && !drop.has(a) && !drop.has(argv[i - 1]));
   for (const f of formats) {
     console.log(`=== format ${f.name} (${f.w}x${f.h}) ===`);
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url),
       ...base, '--w', String(f.w), '--h', String(f.h),
-      '--out', join(DIR, 'out', `silent_${f.name}.mp4`)], { stdio: 'inherit' });
+      '--out', join(DIR, 'out', `${flag('animatic') ? 'animatic' : flag('scan') ? 'scan' : 'silent'}_${f.name}.mp4`)], { stdio: 'inherit' });
     if (r.status !== 0) process.exit(r.status ?? 1);
   }
   process.exit(0);
 }
 
+// Gate: a full-length final render of a film needs its machine checks (check.mjs, holds.mjs) passed on
+// the current code, and a format other than the primary (film.json formats[0]) also needs the human's
+// OK on the primary render (studio → Primary render). So `--all-formats` on a fresh film renders the
+// primary and stops there. Drafts (--animatic, --scan) and partial windows (--from/--dur) are always
+// allowed. --skip-checks overrides it, loudly.
+{
+  const draft = flag('animatic') || flag('scan') || flag('from') || flag('dur');
+  const fmt = (sarg('out', '').match(/silent_([a-z0-9-]+)\.mp4$/) ?? [])[1];
+  const why = !draft && existsSync(join(DIR, 'film.json')) ? [...blockers(DIR), ...formatBlockers(DIR, fmt ?? null)] : [];
+  if (why.length && !flag('skip-checks')) {
+    console.error(`Full render blocked:\n  ${why.join('\n  ')}\n(--skip-checks overrides this; say why in docs/review_log.md.)`);
+    process.exit(3);
+  }
+  if (why.length) {
+    console.warn(`WARNING: rendering with --skip-checks. Not passed:\n  ${why.join('\n  ')}`);
+    mkdirSync(join(DIR, 'out'), { recursive: true });   // the studio shows the override on the Machine checks gate
+    writeFileSync(join(DIR, 'out', 'render-gate.json'), JSON.stringify({ skipped: true, at: new Date().toISOString(), why }, null, 2) + '\n');
+  }
+}
+
 const ANIM = flag('animatic');   // cheap pacing draft: half size, 15fps, no blur, CRF 28
+const SCAN = flag('scan');       // input for holds.mjs: half size, full fps, no blur, CRF 28
+const SMALL = ANIM || SCAN;
 const FPS = ANIM ? 15 : arg('fps', film.fps ?? 60);
-const DUR = arg('dur', film.dur ?? 15), SUB = ANIM ? 1 : arg('sub', film.sub ?? 4), FROM = arg('from', 0);
+const DUR = arg('dur', film.dur ?? 15), SUB = SMALL ? 1 : arg('sub', film.sub ?? 4), FROM = arg('from', 0);
 const half = (v) => Math.round(v / 4) * 2;        // half size, kept even (yuv420p needs even dims)
-const W = ANIM ? half(arg('w', film.w ?? 1080)) : arg('w', film.w ?? 1080);
-const H = ANIM ? half(arg('h', film.h ?? 1920)) : arg('h', film.h ?? 1920);
-const CRF = ANIM ? 28 : arg('crf', 16);
-const OUT = sarg('out', join(DIR, 'out', ANIM ? 'animatic.mp4' : 'silent.mp4'));
+const W = SMALL ? half(arg('w', film.w ?? 1080)) : arg('w', film.w ?? 1080);
+const H = SMALL ? half(arg('h', film.h ?? 1920)) : arg('h', film.h ?? 1920);
+const CRF = SMALL ? 28 : arg('crf', 16);
+const OUT = sarg('out', join(DIR, 'out', ANIM ? 'animatic.mp4' : SCAN ? 'scan.mp4' : 'silent.mp4'));
 const N = arg('workers', availableParallelism());
 const AHEAD = 2;                                   // frames queued per worker (bounds memory)
 mkdirSync(join(DIR, 'out'), { recursive: true });
@@ -72,7 +100,10 @@ try {
 
   const vf = `tmix=frames=${SUB},select='eq(mod(n\\,${SUB})\\,${SUB - 1})',setpts=N/${FPS}/TB`;
   ff = spawn('ffmpeg', ['-y', '-v', 'error', '-f', 'image2pipe', '-framerate', String(FPS * SUB), '-i', '-',
-    '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-crf', String(CRF), '-pix_fmt', 'yuv420p', OUT],
+    '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-crf', String(CRF),
+    // Scan: one keyframe only. A keyframe re-quantizes the whole picture, which holds.mjs reads as a pop.
+    ...(SCAN ? ['-x264-params', 'keyint=infinite:scenecut=0'] : []),
+    '-pix_fmt', 'yuv420p', OUT],
     { stdio: ['pipe', 'inherit', 'inherit'] });
   const ffDone = new Promise((r, j) => ff.on('close', (c) => (c === 0 ? r() : j(new Error(`ffmpeg exited ${c}`)))));
 

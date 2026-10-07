@@ -1,7 +1,11 @@
+<meta charset="utf-8">
 <style>html,body{margin:0;background:#141413}canvas{display:block}</style>
 <canvas id="c"></canvas>
 <script type="module">
 import { spring, track, clamp, rng } from './lib/motion.js';
+import { createLayout, frameExtents } from './lib/layout.js';
+import { cursorAt, ring } from './lib/cursor.js';
+import { drawOdometer, swapText } from './lib/type.js';
 
 // Film manifest: dimensions, duration, beat grid. Renderers and shots.mjs read this.
 const film = await fetch('./film.json').then((r) => r.json());
@@ -14,44 +18,79 @@ const canvas = document.getElementById('c');
 canvas.width = W; canvas.height = H;
 const g = canvas.getContext('2d');
 
+// ---- layout: write scenes in design units, never fixed pixels ----
+// The camera transform maps design space (1080 units across the short side, origin at the centre)
+// to the screen. Every scene draws through it, so anchors, cursor targets and checks agree.
+const F = frameExtents(W, H);          // frame in design units: size bleed elements (marquees, walls) from F
+const { K, EX, EY } = F;               //   e.g. const m = F.across(40); g.fillRect(m.x, y, m.w, 90)
+const camera = () => g.setTransform(K, 0, 0, K, W / 2, H / 2);
+
+// Anchors: name every target where you draw it (lib/layout.js). The cursor, ink and check.mjs read them.
+const L = createLayout();
+window.LAYOUT = L;
+
+// ---- timing: one table, read by the drawing code AND exported for shots.mjs/check.mjs ----
+const CLICKS = [{ t: 5.4, target: 'unlock' }];           // a click names its target; never coordinates
+const SWAP = 5.4;                                        // "Unlock" → "Unlocked", on the click
+const COUNT = [[3.4, 120], [4.4, 150]];                  // coin balance rolls up
+window.EVENTS = { clicks: CLICKS, swaps: [SWAP] };
+window.TRANSFORMS = [[2.4, 3.2]];                        // [[from, to], …] folds, shrinks, morphs, turns
+
 // ---- readiness: renderers await window.ready before the first seek ----
 window.ready = (async () => {
   await document.fonts.load('700 100px "Instrument Serif"');
   await document.fonts.load('400 40px "Geist"');
   await document.fonts.ready;
+  await L.prepare(draw, CLICKS.map((c) => c.t));          // measure targets at each click time
 })();
 
-// ---- layout: write scenes against these, not fixed pixels ----
-// S() maps design space → screen space (camera goes here). All consumers
-// (cursor, wipes, motif) must route through S() or they drift.
-const K = Math.min(W, H) / 1080;             // scale factor for any format
-const S = (x, y) => [W / 2 + x * K, H / 2 + y * K];
-
 // ---- scenes: one object per shot, pure functions of t ----
-const BG = '#141413', INK = '#F0EEE6', ACCENT = '#D97757';
+const BG = '#141413', INK = '#F0EEE6', ACCENT = '#D97757', CARD = '#1F1E1C', HAIR = '#3A3935';
+const exitUp = (t, t0) => -spring(t - t0, 120, 22) * EY * 2.4;   // all exits go the same way
 const SCENES = [
-  { from: 0, to: 3, draw(t) {
+  { from: 0, to: 3.2, draw(t) {
       // Type: critically damped (no overshoot), revealed through a line mask — never a fade.
-      const s = spring(t + 0.15, 170, 26);
-      const [cx, cy] = S(0, -100), size = 190 * K;
-      g.save(); g.translate(cx, cy);
-      g.beginPath(); g.rect(-W, -size * 0.84, 2 * W, size * 1.08); g.clip();
+      const s = spring(t + 0.15, 170, 26), size = 190, y = -100 + exitUp(t, 2.4);
+      g.save(); g.translate(0, y);
+      g.beginPath(); g.rect(-EX, -size * 0.84, 2 * EX, size * 1.08); g.clip();
       g.fillStyle = INK; g.font = `700 ${size}px "Instrument Serif", serif`;
       g.textAlign = 'center'; g.fillText('TITLE', 0, (1 - s) * size * 1.08);
       g.restore();
-      g.save(); g.translate(cx, cy);
-      g.fillStyle = ACCENT; g.fillRect(-320 * K * s, 50 * K, 640 * K * s, 18 * K);
-      g.restore();
+      // The accent bar is the motif: it becomes the card's top edge in the next scene.
+      const grow = spring(t - 2.4, 150, 24), bw = 640 + (760 - 640) * grow;
+      g.fillStyle = ACCENT; g.fillRect(-bw / 2 * s, 50 + (-260 - 50) * grow, bw * s, 18 - 12 * grow);
   }},
-  { from: 3, to: 6, draw(t) {
-      const r = rng(7);
-      for (let i = 0; i < 48; i++) {
-        const [x, y] = S((i % 6) * 170 - 425 + 85, Math.floor(i / 6) * 170 - 595);
-        const s = spring(t - i * 0.03 - r() * 0.1, 260, 20);
-        g.fillStyle = i % 7 ? INK : ACCENT;
-        const q = 120 * K * s;
-        g.fillRect(x - q / 2, y - q / 2, q, q);
+  { from: 2.4, to: DUR, draw(t, T) {
+      // The card grows down from the bar once the bar has arrived (scene 1 hands it over at 3.2):
+      // nothing appears before the motif gets there. Entries overlap the title's exit.
+      const open = spring(t - 0.8, 170, 26), cw = 760, ch = 520 * open, top = -260;
+      if (ch >= 1) {
+        g.fillStyle = CARD; g.fillRect(-cw / 2, top, cw, ch);
+        g.strokeStyle = HAIR; g.lineWidth = 2; g.strokeRect(-cw / 2, top, cw, ch);
       }
+      if (t >= 0.8) { g.fillStyle = ACCENT; g.fillRect(-cw / 2, top, cw, 6); }   // the bar, now the card's edge
+      if (open < 0.6) return;
+      g.save(); g.beginPath(); g.rect(-cw / 2, top, cw, ch); g.clip();
+
+      // Chip: its width is measured from its text, and the label is anchored inside it.
+      g.font = '500 40px "Geist", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      const label = 'coins', lw = g.measureText(label).width, digits = 3, step = 26, pad = 28;
+      const chipW = pad + digits * step + 14 + lw + pad, chipX = -cw / 2 + 48, chipY = top + 60;
+      g.fillStyle = BG; g.fillRect(chipX, chipY, chipW, 64);
+      L.anchor(g, 'chip', chipX, chipY, chipW, 64);
+      g.fillStyle = INK; g.textAlign = 'center';
+      drawOdometer(g, track(T, COUNT, 170, 26), digits, chipX + pad + step / 2, chipY + 46, 40, step);
+      g.textAlign = 'left';
+      L.text(g, 'chip.label', label, chipX + pad + digits * step + 14, chipY + 46, { parent: 'chip' });
+      g.fillText(label, chipX + pad + digits * step + 14, chipY + 46);
+
+      // Button: anchored as 'unlock'; its label swaps on one spring with the click.
+      const bx = -150, by = top + 380, bw = 300, bh = 84, done = spring(T - SWAP, 320, 30);
+      g.fillStyle = done > 0.5 ? ACCENT : INK; g.fillRect(bx, by, bw, bh);
+      L.anchor(g, 'unlock', bx, by, bw, bh);
+      g.fillStyle = BG; g.textAlign = 'center'; g.font = '600 40px "Geist", sans-serif';
+      swapText(g, 'Unlock', 'Unlocked', done, 0, by + 56, 40);
+      g.restore();
   }},
   // ... append one object per shot. Last frame must equal first (loop).
 ];
@@ -60,14 +99,32 @@ function draw(t) {
   // Renderers sample slightly before 0 (motion blur) and up to DUR: clamp so
   // frame 0 isn't blended with blank subframes and the last frame isn't empty.
   t = clamp(t, 0, DUR - 1e-6);
+  L.begin(t);
+  g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = BG; g.fillRect(0, 0, W, H);
-  for (const s of SCENES) if (t >= s.from && t < s.to) s.draw(t - s.from);
+  for (const s of SCENES) if (t >= s.from && t < s.to) { camera(); s.draw(t - s.from, t); }
+
+  // Cursor: screen space, driven by the anchors (arrives early and at rest, see lib/cursor.js).
+  if (t > 3.6) {
+    const c = cursorAt(t, L, CLICKS, { home: [W * 0.85, H * 0.95], from: 3.6 });
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (const k of CLICKS) {
+      const r = ring(t, k.t);
+      if (r > 0 && r < 1) { g.strokeStyle = ACCENT; g.lineWidth = 3 * K; g.globalAlpha = 1 - r; g.beginPath(); g.arc(c.x, c.y, 60 * K * r, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
+    }
+    const s = 34 * K * (1 - 0.15 * c.press);
+    g.fillStyle = INK; g.strokeStyle = BG; g.lineWidth = 2 * K;
+    g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(c.x, c.y + s); g.lineTo(c.x + s * 0.28, c.y + s * 0.74); g.lineTo(c.x + s * 0.7, c.y + s * 0.7); g.closePath();
+    g.fill(); g.stroke();
+    L.point(g, 'cursor', c.x, c.y);                        // the tip check.mjs tests against each target
+  }
 }
 window.seek = (t) => { draw(t); return true; };
 window.DUR = DUR;
 
 // Live preview in a normal browser, off during headless render
 if (!navigator.webdriver) {
+  await window.ready;
   const t0 = performance.now();
   (function loop() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); })();
 }

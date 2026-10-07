@@ -385,6 +385,28 @@ async function viewFilm(slug) {
     await post(`/api/films/${encodeURIComponent(slug)}/shotlist/revoke`, {});
     await refresh(true);
   }
+  // Primary render: watch it inline, then OK it. The stamp sent back is the render you were shown.
+  async function approvePrimary(g, e) {
+    e.currentTarget.disabled = true;
+    const { res, body } = await post(`/api/films/${encodeURIComponent(slug)}/primary/approve`, { stamp: g.stamp });
+    if (res.status === 409) { alert('The primary render changed while you were watching. The new one is loaded now.'); await refresh(true); return; }
+    if (!res.ok) { e.currentTarget.disabled = false; alert(body.error || 'Approval failed.'); return; }
+    await refresh(true);
+  }
+  async function revokePrimary() {
+    if (!confirm('Withdraw your OK on the primary render? The other formats can’t render until you approve again.')) return;
+    await post(`/api/films/${encodeURIComponent(slug)}/primary/revoke`, {});
+    await refresh(true);
+  }
+  function primaryControls(g) {
+    if (!g.approval || g.approval === 'missing') return null;
+    const video = el('video', { class: 'review', src: `${media(slug, g.file)}?v=${encodeURIComponent(g.stamp)}`, controls: true, preload: 'metadata', playsinline: true });
+    const acts = g.approval === 'approved'
+      ? el('div', { class: 'gacts' }, [el('button', { type: 'button', class: 'quiet', onclick: revokePrimary }, 'Withdraw approval')])
+      : el('div', { class: 'gacts' }, [el('button', { type: 'button', class: 'primary', onclick: (e) => approvePrimary(g, e) }, 'Approve, render the other formats'),
+        el('span', { class: 'hint' }, 'Watch it with sound off: this is the silent render.')]);
+    return [video, acts];
+  }
   function shotlistControls(g) {
     if (g.approval === 'missing') return null;
     const open = el('button', { type: 'button', onclick: () => openShotlist() }, panel ? 'Reload shotlist' : 'Read shotlist');
@@ -430,6 +452,7 @@ async function viewFilm(slug) {
       el('div', { class: 'ev', html: `<code>${escHtml(g.evidence)}</code>` }),
       g.note && g.state !== 'todo' ? el('div', { class: 'gnote' }, g.note) : null,
       g.id === 'shotlist' ? shotlistControls(g) : null,
+      ...(g.id === 'primary' ? primaryControls(g) ?? [] : []),
       g.id === 'shotlist' && panel ? panel : null,
       g.id === 'animatic' && g.done ? el('video', { class: 'review', src: `${media(slug, 'animatic.mp4')}?v=${encodeURIComponent(g.updated)}`, controls: true, preload: 'metadata', playsinline: true }) : null,
       g.id === 'final' && g.done ? el('a', { class: 'review-img', href: media(slug, 'contact.png'), target: '_blank', rel: 'noopener' },
@@ -609,6 +632,7 @@ async function viewRun(slug) {
 const NEED_ACTION = {
   shotlist: (n) => el('a', { class: 'button primary', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Read shotlist'),
   brief: (n) => el('a', { class: 'button', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Review and sync'),
+  primary: (n) => el('a', { class: 'button primary', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Watch primary render'),
   version: (n) => el('button', { type: 'button', class: 'primary', onclick: (e) => makeNextVersion(n.slug, e.currentTarget) }, 'Make new version'),
   agent: (n) => n.resumable
     ? el('button', { type: 'button', class: 'primary', onclick: (e) => resumeAgent(n.slug, n.session, e.currentTarget) }, 'Resume')

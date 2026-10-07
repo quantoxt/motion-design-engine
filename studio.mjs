@@ -11,17 +11,19 @@
 //   GET  /api/films/:slug/shotlist          shotlist text + its sha256 + current approval
 //   POST /api/films/:slug/shotlist/approve  { sha256 } of the version you read → docs/approvals.json
 //   POST /api/films/:slug/shotlist/revoke   withdraw the approval
+//   POST /api/films/:slug/primary/approve   { stamp } of the primary render you watched → docs/approvals.json
+//   POST /api/films/:slug/primary/revoke    withdraw it (the renderer blocks the other formats again)
 //   POST   /api/films/:slug/terminal  { runner, command?, cols, rows } or { resume } → start, resume, or reattach
 //   GET    /api/films/:slug/terminal  session status + recent output
 //   DELETE /api/films/:slug/terminal  kill the session
-//   GET  /api/dashboard      needs you (shotlist OKs, edited briefs, failed agents) · running agents · recent films
+//   GET  /api/dashboard      needs you (shotlist and primary-render OKs, edited briefs, failed agents) · running agents · recent films
 //   GET  /api/agents         running sessions + every film's session history (Claude and OpenCode sessions resume)
 //   GET  /api/films/:slug/terminal/log  the film's transcript as plain text (escape codes stripped)
 //   POST /api/films/:slug/brief/sync    copy the edited brief into a film in production (409 once delivered)
 //   POST /api/films/:slug/version       delivered film + changed brief → brands/<brand>-vN/, seeded from the last version
 //   GET  /api/library        brands with finished films (out/<slug>-<format>-<W>x<H>.mp4)
 //   GET  /api/library/:slug  one brand's finished films with size, duration, fps
-//   GET  /media/:slug/:file  a final, poster.png, contact.png or animatic.mp4 from brands/<slug>/out/ (Range for seeking; ?download=1 to save)
+//   GET  /media/:slug/:file  a final, poster.png, contact.png, animatic.mp4 or a silent_*.mp4 render from brands/<slug>/out/ (Range for seeking; ?download=1 to save)
 //   WS     /api/films/:slug/terminal/ws  live output out; { t:'i', d } input and { t:'r', cols, rows } resize in
 //
 // Local only: binds 127.0.0.1, answers only its own Host, writes need a same-origin Origin.
@@ -36,7 +38,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { WebSocketServer } from 'ws';
 import { SLUG, briefTitle } from './studio/brief.mjs';
-import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, films, briefDrift, syncBrief, attention,
+import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, approvePrimary, revokePrimary, films, briefDrift, syncBrief, attention,
   makeVersion, versionInfo, versions, splitVersion } from './studio/films.mjs';
 import { createTerminals } from './studio/terminal.mjs';
 import { library, brand, mediaFile } from './studio/library.mjs';
@@ -192,6 +194,18 @@ async function api(req, res, path) {
       return send(res, r.status, r);
     }
     return send(res, 405, { error: 'Method not allowed.' });
+  }
+
+  const prim = path.match(/^\/api\/films\/([^/]+)\/primary\/(approve|revoke)$/);
+  if (prim) {
+    const slug = decodeURIComponent(prim[1]);
+    if (!validSlug(slug)) return send(res, 400, { error: 'Invalid name.' });
+    if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed.' });
+    let body = {};
+    try { body = JSON.parse((await readBody(req)) || '{}'); } catch { return send(res, 400, { error: 'Request body must be JSON.' }); }
+    const r = prim[2] === 'approve' ? await approvePrimary(ROOT, slug, body.stamp) : await revokePrimary(ROOT, slug);
+    if (r.status === 200) console.log(`${prim[2] === 'approve' ? 'approved' : 'revoked'} primary render for brands/${slug}/`);
+    return send(res, r.status, r);
   }
 
   if (path === '/api/films' && req.method === 'POST') {

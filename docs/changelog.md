@@ -7,6 +7,94 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-07
 
+### Added: Primary render gate, and `frameExtents` for bleed
+- The primary format (`film.json` `formats[0]`) renders first and you approve it in the studio before the other
+  formats render (they cost ~70 min per fix loop on a 60s film). New **Primary render** gate (9 gates now):
+  the silent render plays inline; **Approve** sends the render's stamp (size + mtime), so you only approve what
+  you watched. The approval also stores the film fingerprint: a re-render or a code edit makes it stale.
+  "Needs you" on Home + browser alert when it's waiting. **All formats** gate lists the formats still to render.
+- `render-parallel.mjs` refuses any format but the primary until that approval is current (exit 3), so
+  `--all-formats` on a fresh film renders the primary and stops. `--skip-checks` overrides, as before.
+- `/media` also serves `silent_*.mp4` (for the inline review). New endpoints `POST /api/films/:slug/primary/approve|revoke`.
+- Films delivered before this show the gate as "not reviewed", not blocking.
+- `lib/layout.js` `frameExtents(W, H)` → `EX/EY`, `across(pad)`, `down(pad)`: bleed elements sized from the frame
+  (the 16:9 half-width marquee bug). The template uses it.
+- Verified: 46 tests (approve/stale/revoke/409, legacy, media allowlist, frameExtents). On a scratch copy of the
+  template: `--all-formats` rendered vertical and stopped at square ("waiting for the human's OK"); after
+  `approvePrimary`, `--formats square,wide` rendered and the All formats gate listed all three.
+- CLAUDE.md, skill, brief template, `_template/README.md`, README, factory map, terminal spec updated.
+
+### Added: anchors, `check.mjs`, and the Machine checks gate
+The Narrative Nexus lessons traced most bugs to one position typed twice. This makes the right way the default
+and proves it before a full render.
+- `lib/layout.js`: `createLayout()` → `L.anchor(g, name, x, y, w, h, { parent, bleed })`, `L.text`, `L.point`,
+  rects through the current canvas transform; `L.prepare(draw, times)` in `window.ready` measures targets at
+  given times; `L.at(name, t)` throws on a missing time or name. `wrap()` + `spans()` follow a phrase across
+  line breaks (the wrong-underline bug).
+- `lib/cursor.js`: `cursorAt(t, L, clicks)`: the cursor flies to each click's anchor on critically damped
+  per-axis springs, at rest ≥0.4s before the click; `ring()` for the click ring.
+- `lib/type.js`: `odometer()` / `drawOdometer()` with carry, `swapText()` on one spring inside one clip.
+- `lib/project.js`: `hingeQuad()` / `drawHinged()`: turns on a real edge with perspective; returns the far edge.
+- `check.mjs` (+ pure `lib/checks.mjs`): seeks every format at 30fps and fails on click off target, cursor
+  still moving at a click, click without a target, child overflowing its parent ≥0.3s, anchor cut by the frame
+  edge ≥0.6s (unless bleed). Writes `out/check.json`.
+- `holds.mjs` now measures holds by the largest change in any region (34px grid) instead of the frame average,
+  so a small moving cursor isn't a hold; pops still use the validated frame average. `film.json` `"pops"` lists
+  intended hard cuts. Refuses a scan older than the film. Writes `out/holds.json`.
+- `lib/gate.mjs`: results carry a fingerprint of `index.html` + `film.json`; any edit makes them stale.
+  `render-parallel.mjs` refuses a full-length final render (exit 3) until both passed; drafts and `--from/--dur`
+  windows are exempt; `--skip-checks` overrides and writes `out/render-gate.json`.
+- Studio: new **Machine checks** gate between Critique and Full render, with the first failure as evidence.
+  Films rendered before the gate existed show "not run", not blocking; a `--skip-checks` render is shown.
+- `_template/index.html` rebuilt as the reference: camera transform, anchors, a chip sized from its text, an
+  odometer, a button whose label swaps on the click, an anchor-driven cursor, EVENTS/TRANSFORMS from constants.
+- `lib/package.json` marks `lib/*.js` as ES modules for Node (tests); the browser is unaffected.
+- Docs: CLAUDE.md (Motion + Loop), skill, brief template, `_template/README.md`, README (steps, commands, test count),
+  factory map (tree, conventions: camera transform replaces `S(x,y)`, anchors, check results), terminal spec (8 gates).
+- Verified: 45 tests. On a scratch copy of the template: `check.mjs` passes in all 3 formats; a broken copy
+  (hand-typed cursor, fixed-width chip, cut-off element) fails with all 4 planted bugs named. Gate flow: blocked →
+  edit makes results stale → rerun → render proceeds. Serial vs parallel byte-identical (`bf9850b8…`) over the
+  click window. `holds.mjs` on Narrative Nexus: same 4 pops; holds now exclude spans where something moves.
+
+### Added: `shots.mjs events` and `--format`
+- `shots.mjs events` reads `window.EVENTS` (`{ clicks: [t…], swaps: [t…] }`, any keys) and `window.TRANSFORMS`
+  (`[[from, to], …]`) from the film: `out/events.png` = a still at t and t+0.1 per event, labelled;
+  `out/transforms.png` = one row per transform at 0.15s steps.
+- `--format <name>` / `--format all` shoots any `film.json` format in every mode; outputs get a `_<format>` suffix.
+  Unknown format or mode exits 2. Without the flag, output is unchanged.
+- `_template/index.html` declares empty `window.EVENTS` / `window.TRANSFORMS`; CLAUDE.md loop, skill, brief
+  template, factory map and README use the commands.
+- Verified on a scratch copy of Narrative Nexus with its CLICKS wired in: the sheets show the click misses (7.2,
+  11.4, 24.0), the edge-on cover (14.85–15.15) and the unreadable shrink (28.95–29.25); `--format wide` and
+  `at 1.5 --format all` wrote the suffixed files. Not unit-tested: it needs a browser, so it's checked by running it.
+
+### Added: `holds.mjs` pop + dead-hold scanner
+- `node render-parallel.mjs --dir brands/<x> --scan` → `out/scan.mp4`: half size, film fps, no blur, CRF 28, a
+  single keyframe (periodic keyframes re-quantize the picture and read as pops). ~3 min for a 60s film vs ~31 min full.
+- `node holds.mjs --dir brands/<x>` scales to 135px (kills grain), runs `scdet`, and reports one-frame pops (vs ±3
+  neighbours and vs frames one/two grain ticks away) and holds >1s where only the 12fps grain ticks. `film.json`
+  `"holds"` lists intended holds. Exit 1 on findings. Logic in `lib/holds.mjs`, 5 tests (34 total).
+- Verified on a scratch copy of Narrative Nexus: all 4 pops the agent found by hand (24.000 Unlock swap, 29.717,
+  30.017, 30.317), no false ones; every hold it listed, plus 22.58–24.03. Runs in ~5s.
+- CLAUDE.md loop, skill, brief template, factory map and README name the commands.
+- Fixed L-004 (below).
+
+### Changed: rules from the Narrative Nexus lessons
+- `CLAUDE.md` Motion: one source of truth per position, cursor lands ≥0.4s early inside its target,
+  hinged 3D turns, entries from 0, motif never covers its words, readable before/after states, bleed from the frame.
+- `CLAUDE.md` Loop: check by kind of bug on the animatic (click/swap stills, 0.15s transform steps, pop/hold
+  scan, every format), score from measurements, render the primary format first. Skill and brief template match.
+- `render-parallel.mjs --all-formats --formats a,b` renders only the named formats (unknown names exit 1).
+  Dispatch only; frame code untouched, so no framemd5 re-check needed.
+- `_template/index.html` declares `<meta charset="utf-8">` (non-ASCII glyphs drawn to canvas came out as `â†’`).
+- Brief template: live data that contradicts site copy is flagged at the shotlist gate.
+
+### Changed: lessons live in each brand folder
+- Agents write lessons to `brands/<brand>/docs/lessons.md` and never read or write `docs/LESSONS.md`, which is now
+  curated by hand. New `## Lessons` section in `CLAUDE.md`; skill, brief template, `_template/README.md` and
+  factory map updated to match. Agents read their brand's `lessons.md` before planning; `makeVersion`
+  carries it into the next version (test assertion added).
+
 ### Changed: a new version needs a brief change
 - `makeVersion` refuses (409) when `_raw/<brand>.md` is identical to the latest version's `docs/brief.md`. A redo
   without a brief change is no longer possible from the studio or the API. Test added (29 total, same count).

@@ -89,12 +89,12 @@ export async function library(root) {
   return brands.sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? ''));
 }
 
-// Which files under brands/<slug>/out/ the studio may serve: finals, the poster, and the two
-// review files the film page shows inline (animatic, contact sheet). Nothing else.
+// Which files under brands/<slug>/out/ the studio may serve: finals, the poster, and the review files
+// the film page shows inline (animatic, contact sheet, silent renders for the primary review). Nothing else.
 const REVIEW = new Set(['poster.png', 'contact.png', 'animatic.mp4']);
 export async function mediaFile(root, slug, name) {
   if (typeof name !== 'string') return null;
-  const ok = REVIEW.has(name) || finalPattern(slug).test(name);
+  const ok = REVIEW.has(name) || /^silent(_[a-z0-9-]+)?\.mp4$/.test(name) || finalPattern(slug).test(name);
   const file = join(root, 'brands', slug, 'out', name);
   return ok && existsSync(file) ? file : null;
 }

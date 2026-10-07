@@ -12,8 +12,16 @@ MOTION DESIGN/
   lib/
     motion.js               # springs, track, indicator, swapAlpha, rng, presets (browser-only)
     hand.js                 # hand-drawn SVG ink: trace(), boil(), ink(), strokeLine()
-    project.js              # fake-3D: rot/iso/cube/drawCube/turntable/parallax (pure math)
+    project.js              # fake-3D: rot/iso/cube/drawCube/turntable/parallax, hingeQuad/drawHinged (turn on a real edge)
     serve.mjs               # static server; serves --dir, falls back to engine root for /lib/*
+    holds.mjs               # pop + dead-hold analysis (pure; used by holds.mjs)
+    layout.js               # named anchors through the canvas transform, prepare/at, wrap + spans, frameExtents (bleed)
+    cursor.js               # cursorAt(): cursor driven by anchors, lands early and at rest; ring()
+    type.js                 # odometer with carry, drawOdometer, swapText (one spring, one clip)
+    checks.mjs              # geometry rules over anchors (pure; used by check.mjs)
+    gate.mjs                # check results + film fingerprint; primary-render review state; what blocks a full render
+    package.json            # {"type":"module"}: Node reads lib/*.js as ES modules (tests); browsers ignore it
+    *.test.mjs              # holds, layout/cursor/checks, type/hinge (part of `npm test`)
   package.json              # deps (node-pty, ws, xterm, playwright), `npm run studio`, `npm test`; Node >= 20
   studio.mjs                # web UI server: `npm run studio` → 127.0.0.1:4321. Briefs → _raw/<slug>.md, Start film,
                             # gates + approvals, agent terminals (websocket), Library media. Endpoint list in its header
@@ -22,10 +30,11 @@ MOTION DESIGN/
                             # brief editor (#/brief/<slug>), film gates (#/film/<slug>), agent terminal (#/run/<slug>),
                             # Agents (#/agents), Film Library (#/library, #/library/<slug>)
     library.mjs             # Library: finished films per brand, versions folded in (finalize's naming), ffprobe metadata,
-                            # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4; nothing else)
+                            # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4, silent_*.mp4)
     brief.mjs               # template ⇄ form model: parse / serialize / readBack / filmSettings (shared with tests)
     films.mjs               # Start film (scaffold brands/<slug>/ from _template), gate status from files,
-                            # shotlist approval → brands/<slug>/docs/approvals.json (sha256 of the approved text),
+                            # shotlist + primary-render approvals → brands/<slug>/docs/approvals.json (sha256 of the
+                            # approved text; the render's size+mtime and the film fingerprint),
                             # brief drift + sync (_raw/ → docs/brief.md), "needs you" items for Home,
                             # versions: brands/<brand>-vN/ via makeVersion (seeded from the last version)
     terminal.mjs            # agent sessions: one node-pty PTY per film, scrollback replay,
@@ -33,13 +42,24 @@ MOTION DESIGN/
                             # resume ids (Claude --session-id, OpenCode found by first message) → out/agent-sessions.json.
                             # Spec: docs/terminal-spec.md
     fonts/                  # Bricolage Grotesque woff2 + OFL (bundled, works offline)
-    *.test.mjs              # `npm test` (29): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
-                            # terminal sessions + resume (fake PTY / fake OpenCode), library + media allowlist (no browser)
+    *.test.mjs              # `npm test` (46 with lib/*.test.mjs): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
+                            # terminal sessions + resume (fake PTY / fake OpenCode), library + media allowlist,
+                            # Machine checks + Primary render gates (fresh/stale/legacy/skip) (no browser)
   render.mjs                # serial reference renderer (reads film.json, ?w&h override)
   render-parallel.mjs       # DEFAULT renderer: parallel workers, byte-identical output
-                            # --animatic (cheap pacing draft), --all-formats (film.json),
+                            # --animatic (cheap pacing draft), --scan (half size, full fps, no blur, one keyframe
+                            # → out/scan.mp4 for holds.mjs), --all-formats (film.json; --formats a,b to pick;
+                            # drafts land as animatic_<f>/scan_<f>.mp4, never silent_<f>.mp4),
                             # --workers N, --crf N, --from S, --out FILE
-  shots.mjs                 # critique stills: beats (from film's beat grid) / strip / at
+  shots.mjs                 # critique stills: beats (from film's beat grid) / strip / at / events
+                            # (window.EVENTS stills + window.TRANSFORMS 0.15s rows); --format <name>|all
+  check.mjs                 # geometry gate: clicks in targets at rest, no overflow, nothing cut by the
+                            # frame edge, every format → out/check.json
+  holds.mjs                 # one-frame pops + holds >1s where only grain moves, from out/scan.mp4
+                            # (film.json "holds"/"pops" = allowed) → out/holds.json
+  # render-parallel.mjs refuses a full render until both results passed on the current
+  # index.html + film.json, and any format but the primary until the human approved the primary
+  # render in the studio (--skip-checks overrides, shown on the studio's gates)
   finalize.mjs              # mix (music.wav + sfx.wav if no mix.wav) + two-pass loudnorm −14 LUFS
                             # + mux + ebur128 confirm + CRF-20 posting copy
                             # → out/<brand>-<format>-<W>x<H>.mp4 (+ -posting); --all-formats = every silent_*.mp4
@@ -50,7 +70,7 @@ MOTION DESIGN/
     knowledge-base.md       # the ritual (Movez course, distilled)
     patterns.md             # Pattern A (product reel) vs Pattern B (educational)
     parallel-render.md      # why parallel is safe + framemd5 verification
-    LESSONS.md              # measured lessons from shipped films — extend every run
+    LESSONS.md              # factory-level lessons, curated by hand — agents never read or write it
     changelog.md            # what changed in the factory, newest first — update on every factory change
     bug-docs.md             # factory bug log: symptom/cause/fix/verified — append on every engine fix
     terminal-spec.md        # agent terminal: presets, sessions, history + resume (Claude and OpenCode)
@@ -75,8 +95,13 @@ MOTION DESIGN/
 - `film.json` (per brand) is the source of truth for w/h/fps/dur/sub/bpm/beats/formats.
   Scripts read it; flags override it. Never hardcode sizes in scripts.
 - Films read render dimensions from `?w&h` query params (set by renderers),
-  falling back to `film.json`. Layout code must use the `S(x,y)` mapping and a
-  `K = min(W,H)/1080` scale factor so every format reframes instead of cropping.
+  falling back to `film.json`. Scenes draw in design units through one camera transform
+  (`K = min(W,H)/1080`, origin at the centre; `EX`/`EY` = frame half-extents for bleed), so every
+  format reframes instead of cropping, and anchors (`lib/layout.js`) come out in screen pixels.
+- Positions are named, never retyped: `L.anchor`/`L.text` where drawn, `L.at(name, t)` everywhere else.
+  Clicks are `{ t, target }`; `window.EVENTS`/`TRANSFORMS` come from the same constants.
+- Machine-check results live in `out/check.json` / `out/holds.json`, stamped with a fingerprint of
+  `index.html` + `film.json`; `out/render-gate.json` records a `--skip-checks` render.
 - `index.html` may `import './lib/motion.js'` — the server resolves `/lib/*`
   from the engine root automatically. No per-brand copies of `lib/`.
 
@@ -89,10 +114,10 @@ MOTION DESIGN/
    `docs/parallel-render.md`.
 3. New film: copy `brands/_template/` → `brands/<name>/`, follow the skill pipeline:
    assets → style_guide → shotlist (WAIT for OK) → animatic (pacing) →
-   code → shots (beats + strips) → critique 4 rounds (8+) → `--all-formats` →
+   code → checks by kind of bug on the animatic → critique 4 rounds (8+) → machine checks gate → primary format → human OK (Primary render gate) → other formats →
    `finalize.mjs --all-formats` (→ `out/<brand>-<format>-<W>x<H>.mp4`) → deliver + lessons.
 4. `brands/quantoxt/` is completed work — read it, never write to it.
-5. Every run appends its measured lessons to `docs/LESSONS.md`.
+5. Every run writes its measured lessons to `brands/<brand>/docs/lessons.md`, never `docs/LESSONS.md`.
 6. Every engine fix gets a `docs/bug-docs.md` entry (Symptom / Cause / Fix / Verified),
    reproduced with a failing test BEFORE the fix. Brand-film bugs go in that
    brand's review log, never the bug log.

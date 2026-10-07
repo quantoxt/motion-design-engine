@@ -10,6 +10,14 @@ Severity: **high** = breaks a real job · **med** = breaks a common option · **
 
 ## 2026-10-07 · Film Library work
 
+### L-004 · `render-parallel.mjs --all-formats --animatic` · high
+- **Symptom:** an animatic of every format overwrote the real renders: each draft was written to `silent_<format>.mp4`,
+  and `finalize.mjs --all-formats` would then mux the half-size 15fps draft as the final.
+- **Cause:** the `--all-formats` dispatcher always passed `--out silent_<format>.mp4`, whatever the mode.
+- **Fix:** drafts land as `animatic_<format>.mp4` / `scan_<format>.mp4`; only full renders write `silent_<format>.mp4`.
+- **Verified:** scratch copy, `--animatic --all-formats --formats square,wide --dur 0.5` → `animatic_square.mp4`,
+  `animatic_wide.mp4`, no `silent_*` written. Frame code untouched (dispatch only), so no framemd5 re-check.
+
 ### L-003 · `finalize.mjs --all-formats` · low
 - **Symptom:** an old plain `out/silent.mp4` next to `silent_vertical.mp4` (same size) both mapped to
   `<brand>-vertical-…mp4`: the file was finalized twice and whichever sorted last won, even if it was the stale one.

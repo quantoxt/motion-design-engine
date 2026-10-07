@@ -47,7 +47,8 @@ test('media: finals, poster and review files only', async () => {
   assert.ok(await mediaFile(root, 'acme-co', 'acme-co-vertical-1080x1920-posting.mp4'));
   assert.ok(await mediaFile(root, 'acme-co', 'poster.png'));
   assert.ok(await mediaFile(root, 'acme-co', 'animatic.mp4'));
-  for (const bad of ['silent_vertical.mp4', 'contact.png' /* not written in this fixture */, 'acme-vertical-1080x1920.mp4', '../docs/brief.md',
+  assert.ok(await mediaFile(root, 'acme-co', 'silent_vertical.mp4'), 'renders are served for the primary review');
+  for (const bad of ['silent_x.mp4.bak', 'contact.png' /* not written in this fixture */, 'acme-vertical-1080x1920.mp4', '../docs/brief.md',
     'acme-co-wide-1920x1080.mp4/../../docs/brief.md', 'acme-co-nope-1x1.mp4', null]) {
     assert.equal(await mediaFile(root, 'acme-co', bad), null, String(bad));
   }

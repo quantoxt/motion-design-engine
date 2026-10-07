@@ -49,14 +49,28 @@
   lines become paths, rays become diagrams. No meaningless hard cuts.
 - One motif object should carry transitions across the whole film.
 - All exits go the same direction. Overlapping text swaps must share one spring
-  (odometer grammar) so glyphs never share pixels. Route every screen-space
+  (odometer grammar) so glyphs never share pixels: `swapText` / `drawOdometer`
+  (carry included) from `lib/type.js`, never hand-rolled. Route every screen-space
   consumer through one mapping function (incl. camera) or elements drift.
 - Overlap entries with exits: start the next scene before the previous finishes.
   Holds longer than ~1s need new content. Phone test: source ÷ 3 ≈ 360px wide;
   body/UI text under ~40px source lands ≤13px on phone.
 - Hand-drawn SVG goes through `lib/hand.js` (Path2D + boil + pencil ink), never
   raster images of drawings. Fake-3D goes through `lib/project.js`
-  (iso/cube/turntable/parallax) — both pure in t, both parallel-safe.
+  (iso/cube/turntable/parallax/`drawHinged`) — both pure in t, both parallel-safe.
+- One source of truth per position (`lib/layout.js`). Name every target where it is
+  drawn (`L.anchor`, `L.text` with `{ parent }`, `{ bleed: true }` for bleed); cursor
+  targets, ink and underlines read `L.at(name, t)`. Wrapped copy goes through `wrap` +
+  `spans`, so annotations follow the words across line breaks. Never type a coordinate twice.
+- Clicks are `{ t, target }` and the cursor is `cursorAt()` from `lib/cursor.js`: it
+  lands ≥0.4s before each click, inside the target, at rest. Anchor its tip as `'cursor'`.
+- A 3D turn pivots on the object's real hinge (`drawHinged`, a cover on its spine), and
+  its far edge is where the next object starts. Nothing appears behind it before it gets there.
+- An entry starts from 0 (scale, mask or off-frame), never at full size.
+- The motif never covers the words it annotates, least of all in the 2s hook.
+- A state change must read at phone size in both states (give "before" a tint).
+- Bleed elements (marquees, walls) are sized from the frame, not the content box:
+  `frameExtents(W, H)` from `lib/layout.js` (`F.across(pad)`, `F.down(pad)`), anchored `{ bleed: true }`.
 
 ## Sound
 - Score and SFX are synthesized in code unless a track is supplied.
@@ -67,12 +81,38 @@
 - You cannot hear the result. Say so and ask a human to listen; "sound sync" here
   is measured, never auditioned.
 
+## Lessons
+- Before planning, read `brands/<name>/docs/lessons.md` if it exists (a new version inherits the
+  previous one's) and don't repeat its mistakes.
+- At the end of every run, write what it taught you to `brands/<name>/docs/lessons.md`
+  (create or extend it; short measured rules, not a diary).
+- Never read or write `docs/LESSONS.md`. It is curated by hand.
+
 ## Loop before you show me anything
-1. `shots.mjs beats` (settled state per beat) AND `shots.mjs strip` across EVERY
-   scene handoff — beat sheets miss transition bugs. Re-check the encoded MP4 once
-   at the end (blur + compression change the look).
+1. Check by kind of bug, on the animatic, before any full render. Beat stills only
+   show the film at rest; most bugs live between beats, in time, or in other formats.
+   - `shots.mjs beats` (layout at rest) AND `shots.mjs strip` across EVERY scene handoff.
+   - `shots.mjs events`: a still at every click and label swap, and 0.15s steps across
+     every transform (fine endpoints prove nothing about the middle). The film declares
+     them in `window.EVENTS` / `window.TRANSFORMS`, derived from the drawing constants.
+   - `render-parallel.mjs --scan` then `holds.mjs`: one-frame pops (hidden cuts,
+     full-size entries, hard swaps) and holds >1s where only grain/boil moves. Fix
+     each, or list an intended hold in film.json `"holds"`. The animatic is too coarse for it.
+   - Every format: `shots.mjs events --format all` and `shots.mjs at <hook> <densest> <end> --format all`.
+   - `check.mjs`: in every format, every click lands in its target with the cursor at rest,
+     no text overflows its parent, nothing sits cut by the frame edge.
+   Re-check the encoded MP4 once at the end (blur + compression change the look).
 2. Score 1-10 on: hook in first 2s, readability at phone size,
-   motion quality, variety, brand accuracy, sound sync.
+   motion quality, variety, brand accuracy, sound sync. Score from measurements,
+   not from the shotlist: if an item can be measured (holds, click hits, sync), measure it.
 3. Fix the 3 worst problems. Budget 4 critique rounds, not 3. Repeat until 8+.
-4. Only then do the full render.
+4. Only then do the full render. It is gated: `render-parallel.mjs` refuses a full render
+   until `check.mjs` and `holds.mjs` have passed on the current code (any edit to
+   index.html or film.json re-opens the gate). `--skip-checks` exists for emergencies only:
+   it shows on the studio gate, and you say why in the review log.
+   The primary format (film.json `formats[0]`) renders first: `--all-formats --formats <primary>`.
+   Review it yourself (stills, `holds.mjs --file out/silent_<primary>.mp4`), then tell the human it's
+   ready and wait: they watch it and approve it in the studio (Primary render). The renderer refuses
+   the other formats until that OK matches the current render and code. Then `--formats <others>`.
+   Every format bug so far was visible in the primary.
 5. If these rules change mid-session, re-read them and re-check the plan.

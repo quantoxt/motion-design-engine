@@ -4,7 +4,7 @@
   "description": "Motion design factory: brand films rendered from code, with a local studio UI",
   "scripts": {
     "studio": "node studio.mjs",
-    "test": "node --test studio/*.test.mjs"
+    "test": "node --test studio/*.test.mjs lib/*.test.mjs"
   },
   "keywords": [],
   "type": "commonjs",
