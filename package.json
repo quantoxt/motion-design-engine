@@ -1,0 +1,25 @@
+{
+  "name": "motion-design",
+  "version": "1.0.0",
+  "description": "Motion design factory: brand films rendered from code, with a local studio UI",
+  "scripts": {
+    "studio": "node studio.mjs",
+    "test": "node --test studio/*.test.mjs"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "playwright": "^1.63.0",
+    "ws": "^8.22.0"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}

@@ -1,0 +1,121 @@
+// Parallel twin of render.mjs: same flags, same output, ~4-5x faster.
+// node render-parallel.mjs --fps 60 --dur 20 --sub 4 --w 1080 --h 1920 [--from 0 --out out/silent.mp4 --workers 4]
+//
+// Why it's safe: seek(t) is a pure function of t, so any browser can paint any frame.
+//  - Frame f is painted by worker f % N (one headless Chromium each).
+//  - Subframe times use the exact same expression as render.mjs → bit-identical t.
+//  - Frames are written to ONE ffmpeg in order, so tmix + x264 see the same stream.
+//  - Capture is CDP PNG with optimizeForSpeed: lighter zlib, identical pixels.
+// See docs/parallel-render.md.
+import { chromium } from 'playwright';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { availableParallelism } from 'node:os';
+import { serve } from './lib/serve.mjs';
+
+const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? Number(process.argv[i + 1]) : d; };
+const sarg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
+const flag = (k) => process.argv.includes('--' + k);
+const DIR = resolve(sarg('dir', '.'));
+const HERE = dirname(fileURLToPath(import.meta.url));
+const film = existsSync(join(DIR, 'film.json')) ? JSON.parse(readFileSync(join(DIR, 'film.json'), 'utf8')) : {};
+
+// --all-formats: re-invoke once per film.json format (flags are inherited)
+if (flag('all-formats')) {
+  const formats = film.formats ?? [{ name: 'main', w: film.w ?? 1080, h: film.h ?? 1920 }];
+  // Drop --all-formats and any --w/--h/--out (+ value): each format sets its own.
+  const argv = process.argv.slice(2), drop = new Set(['--w', '--h', '--out']);
+  const base = argv.filter((a, i) => a !== '--all-formats' && !drop.has(a) && !drop.has(argv[i - 1]));
+  for (const f of formats) {
+    console.log(`=== format ${f.name} (${f.w}x${f.h}) ===`);
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url),
+      ...base, '--w', String(f.w), '--h', String(f.h),
+      '--out', join(DIR, 'out', `silent_${f.name}.mp4`)], { stdio: 'inherit' });
+    if (r.status !== 0) process.exit(r.status ?? 1);
+  }
+  process.exit(0);
+}
+
+const ANIM = flag('animatic');   // cheap pacing draft: half size, 15fps, no blur, CRF 28
+const FPS = ANIM ? 15 : arg('fps', film.fps ?? 60);
+const DUR = arg('dur', film.dur ?? 15), SUB = ANIM ? 1 : arg('sub', film.sub ?? 4), FROM = arg('from', 0);
+const half = (v) => Math.round(v / 4) * 2;        // half size, kept even (yuv420p needs even dims)
+const W = ANIM ? half(arg('w', film.w ?? 1080)) : arg('w', film.w ?? 1080);
+const H = ANIM ? half(arg('h', film.h ?? 1920)) : arg('h', film.h ?? 1920);
+const CRF = ANIM ? 28 : arg('crf', 16);
+const OUT = sarg('out', join(DIR, 'out', ANIM ? 'animatic.mp4' : 'silent.mp4'));
+const N = arg('workers', availableParallelism());
+const AHEAD = 2;                                   // frames queued per worker (bounds memory)
+mkdirSync(join(DIR, 'out'), { recursive: true });
+
+const total = Math.round(DUR * FPS * SUB);        // subframes, same count as render.mjs
+const frames = Math.ceil(total / SUB);
+const tOf = (i) => FROM + (i - (SUB - 1)) / (FPS * SUB);   // identical to render.mjs
+
+const srv = await serve(DIR, [dirname(fileURLToPath(import.meta.url))]);
+const browsers = [];
+let ff;
+try {
+  const workers = await Promise.all(Array.from({ length: N }, async () => {
+    const browser = await chromium.launch();
+    browsers.push(browser);
+    const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+    await page.goto(srv.url + `?w=${W}&h=${H}`);
+    await page.waitForFunction(() => window.ready && typeof window.seek === 'function');   // setup may finish after load
+    await page.evaluate(() => window.ready);
+    await page.evaluate(() => document.fonts.ready);
+    const cdp = await page.context().newCDPSession(page);
+    return { page, cdp, queue: Promise.resolve() };
+  }));
+
+  const vf = `tmix=frames=${SUB},select='eq(mod(n\\,${SUB})\\,${SUB - 1})',setpts=N/${FPS}/TB`;
+  ff = spawn('ffmpeg', ['-y', '-v', 'error', '-f', 'image2pipe', '-framerate', String(FPS * SUB), '-i', '-',
+    '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-crf', String(CRF), '-pix_fmt', 'yuv420p', OUT],
+    { stdio: ['pipe', 'inherit', 'inherit'] });
+  const ffDone = new Promise((r, j) => ff.on('close', (c) => (c === 0 ? r() : j(new Error(`ffmpeg exited ${c}`)))));
+
+  async function paint(w, f) {
+    const pngs = [];
+    for (let i = f * SUB; i < Math.min((f + 1) * SUB, total); i++) {
+      await w.page.evaluate((t) => window.seek(t), tOf(i));
+      const { data } = await w.cdp.send('Page.captureScreenshot',
+        { format: 'png', optimizeForSpeed: true, clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
+      pngs.push(Buffer.from(data, 'base64'));
+    }
+    return pngs;
+  }
+
+  // Each worker runs its jobs one at a time (seek + capture must not interleave on a page).
+  const jobs = new Map();
+  const enqueue = (f) => {
+    if (f >= frames) return;
+    const w = workers[f % N];
+    const job = w.queue.then(() => paint(w, f));
+    w.queue = job.catch(() => {});
+    jobs.set(f, job);
+  };
+  for (let f = 0; f < AHEAD * N; f++) enqueue(f);
+
+  const t0 = performance.now();
+  for (let f = 0; f < frames; f++) {
+    const pngs = await jobs.get(f);
+    jobs.delete(f);
+    enqueue(f + AHEAD * N);
+    for (const png of pngs) if (!ff.stdin.write(png)) await new Promise((r) => ff.stdin.once('drain', r));
+    if ((f + 1) % FPS === 0 || f === frames - 1) {
+      const s = (performance.now() - t0) / 1000;
+      console.log(`rendered ${(FROM + (f + 1) / FPS).toFixed(1)}s / ${FROM + DUR}s  (${s.toFixed(0)}s elapsed, ${N} workers)`);
+    }
+  }
+  ff.stdin.end();
+  await ffDone;
+} catch (err) {
+  ff?.kill('SIGKILL');
+  console.error(err);
+  process.exitCode = 1;
+} finally {
+  await Promise.all(browsers.map((b) => b.close().catch(() => {})));
+  srv.close();
+}

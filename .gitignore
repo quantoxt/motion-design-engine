@@ -1,0 +1,23 @@
+# Dependencies (npm install recreates them)
+node_modules/
+
+# Films: each brand's folder holds client assets, renders and briefs, never pushed.
+# Only the scaffold every new film is copied from is part of the repo.
+brands/*
+!brands/_template/
+brands/_template/out/*
+!brands/_template/out/.gitkeep
+
+# Briefs are client material too: only the template is shared.
+_raw/*
+!_raw/brief-template.md
+
+# Renders from running a script without --dir (legacy mode) land in the root
+/out/
+
+# Local-only Claude settings
+.claude/settings.local.json
+
+# OS / editor noise
+.DS_Store
+*.swp

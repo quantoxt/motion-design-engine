@@ -1,0 +1,74 @@
+<style>html,body{margin:0;background:#141413}canvas{display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { spring, track, clamp, rng } from './lib/motion.js';
+
+// Film manifest: dimensions, duration, beat grid. Renderers and shots.mjs read this.
+const film = await fetch('./film.json').then((r) => r.json());
+const beats = await fetch('./' + (film.beats || 'beats.json')).then((r) => r.json()).catch(() => null);
+
+// Query params (set by renderers, e.g. animatic) override the manifest
+const qs = new URLSearchParams(location.search);
+const W = +(qs.get('w') || film.w), H = +(qs.get('h') || film.h), DUR = film.dur;
+const canvas = document.getElementById('c');
+canvas.width = W; canvas.height = H;
+const g = canvas.getContext('2d');
+
+// ---- readiness: renderers await window.ready before the first seek ----
+window.ready = (async () => {
+  await document.fonts.load('700 100px "Instrument Serif"');
+  await document.fonts.load('400 40px "Geist"');
+  await document.fonts.ready;
+})();
+
+// ---- layout: write scenes against these, not fixed pixels ----
+// S() maps design space → screen space (camera goes here). All consumers
+// (cursor, wipes, motif) must route through S() or they drift.
+const K = Math.min(W, H) / 1080;             // scale factor for any format
+const S = (x, y) => [W / 2 + x * K, H / 2 + y * K];
+
+// ---- scenes: one object per shot, pure functions of t ----
+const BG = '#141413', INK = '#F0EEE6', ACCENT = '#D97757';
+const SCENES = [
+  { from: 0, to: 3, draw(t) {
+      // Type: critically damped (no overshoot), revealed through a line mask — never a fade.
+      const s = spring(t + 0.15, 170, 26);
+      const [cx, cy] = S(0, -100), size = 190 * K;
+      g.save(); g.translate(cx, cy);
+      g.beginPath(); g.rect(-W, -size * 0.84, 2 * W, size * 1.08); g.clip();
+      g.fillStyle = INK; g.font = `700 ${size}px "Instrument Serif", serif`;
+      g.textAlign = 'center'; g.fillText('TITLE', 0, (1 - s) * size * 1.08);
+      g.restore();
+      g.save(); g.translate(cx, cy);
+      g.fillStyle = ACCENT; g.fillRect(-320 * K * s, 50 * K, 640 * K * s, 18 * K);
+      g.restore();
+  }},
+  { from: 3, to: 6, draw(t) {
+      const r = rng(7);
+      for (let i = 0; i < 48; i++) {
+        const [x, y] = S((i % 6) * 170 - 425 + 85, Math.floor(i / 6) * 170 - 595);
+        const s = spring(t - i * 0.03 - r() * 0.1, 260, 20);
+        g.fillStyle = i % 7 ? INK : ACCENT;
+        const q = 120 * K * s;
+        g.fillRect(x - q / 2, y - q / 2, q, q);
+      }
+  }},
+  // ... append one object per shot. Last frame must equal first (loop).
+];
+
+function draw(t) {
+  // Renderers sample slightly before 0 (motion blur) and up to DUR: clamp so
+  // frame 0 isn't blended with blank subframes and the last frame isn't empty.
+  t = clamp(t, 0, DUR - 1e-6);
+  g.fillStyle = BG; g.fillRect(0, 0, W, H);
+  for (const s of SCENES) if (t >= s.from && t < s.to) s.draw(t - s.from);
+}
+window.seek = (t) => { draw(t); return true; };
+window.DUR = DUR;
+
+// Live preview in a normal browser, off during headless render
+if (!navigator.webdriver) {
+  const t0 = performance.now();
+  (function loop() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); })();
+}
+</script>
