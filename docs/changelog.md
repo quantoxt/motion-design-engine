@@ -7,6 +7,10 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-07
 
+### Fixed: brief editor counted 9 of 10 at most
+- Section 10 (Gates) has no fields, so it never counted as started. Field-less sections now count as complete
+  (`studio/app.mjs` `changed()`); filling 1–9 shows 10 of 10.
+
 ### Added: Primary render gate, and `frameExtents` for bleed
 - The primary format (`film.json` `formats[0]`) renders first and you approve it in the studio before the other
   formats render (they cost ~70 min per fix loop on a 60s film). New **Primary render** gate (9 gates now):
