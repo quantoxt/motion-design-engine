@@ -7,6 +7,31 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-07
 
+### Changed: a new version needs a brief change
+- `makeVersion` refuses (409) when `_raw/<brand>.md` is identical to the latest version's `docs/brief.md`. A redo
+  without a brief change is no longer possible from the studio or the API. Test added (29 total, same count).
+
+### Added: film versions (v2, v3…) for briefs edited after delivery
+- One brief per brand (`_raw/<brand>.md`); films are versions: `brands/<brand>/` is v1, then `brands/<brand>-v2/`…
+  (`<x>-vN` counts as a version only if `brands/<x>/` exists).
+- **While a film is in production**, a brief edit is synced into it as before. **Once it's delivered**, Sync is
+  refused (409) and the studio offers **Make new version** instead (film page banner + Home *Needs you*).
+- **Make v2** (`POST /api/films/:slug/version`) scaffolds `brands/<brand>-v2/` from the current brief and
+  seeds it so it's nearly as cheap as editing: v1's `assets/` and `docs/style_guide.md` are copied (so the assets
+  gate is already done), v1's `film.json` tuning is kept with the new brief's duration/formats/tempo on top, and
+  `docs/previous-version.md` says where v1 is (read-only), what was copied and which brief sections changed.
+  Shotlist, approval, renders start fresh. Refused until the latest version is delivered.
+- Drift and *Needs you* follow the newest version only; older versions stay quiet. The briefs list, Start film
+  and the Agents page follow versions (labels "v2").
+- **Library:** versions fold into their brand's folder. The folder card shows the newest version's cover and
+  "N versions, latest vK". The brand page has a section per version, newest first, each with its films and a
+  Gates link; `/api/library/<brand>-v2` opens the brand.
+- `motion-reel` skill: a version folder means read `docs/previous-version.md` first, reuse, never write to v1.
+- Tests: 29 (`npm test`), with sync refused after delivery, v2 seeding (assets, style guide, tuning kept + new
+  duration, fresh shotlist, no v1 renders), gates of a fresh v2, `x-v2` brands that aren't versions, drift on the
+  newest version only, v3 refused until v2 is delivered, Library folding three folders into one brand.
+  Checked end to end on a real server with a throwaway brand (removed).
+
 ### Sync pass: code, docs and comments checked against each other
 - All `.mjs`/`.js` pass `node --check` (lib/*.js checked as ES modules), `beats.py` compiles, `npm test` 27/27.
 - `studio.mjs` header: resume in the terminal POST, OpenCode resume, the full `/media/` allowlist, `drift` on

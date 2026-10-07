@@ -123,7 +123,7 @@ async function viewList() {
     const name = b.title ? escHtml(b.title) : `<span class="untitled">${escHtml(b.slug)}</span>`;
     const film = b.film
       ? `<span class="progress" aria-hidden="true">${Array.from({ length: b.film.total }, (_, i) => `<i class="${i < b.film.done ? 'on' : ''}"></i>`).join('')}</span>`
-        + `Film: ${b.film.done} of ${b.film.total} gates${b.film.current ? `, next: ${escHtml(b.film.current)}` : ', delivered'}`
+        + `${b.film.version > 1 ? `v${b.film.version}: ` : 'Film: '}${b.film.done} of ${b.film.total} gates${b.film.current ? `, next: ${escHtml(b.film.current)}` : ', delivered'}`
       : 'No film yet';
     rows.append(el('li', { class: 'row' }, [
       el('div', {}, [
@@ -133,8 +133,8 @@ async function viewList() {
       el('div', { class: 'acts' }, [
         el('a', { class: 'button', href: `#/brief/${encodeURIComponent(b.slug)}` }, 'Edit brief'),
         b.film
-          ? [el('a', { class: 'button', href: `#/film/${encodeURIComponent(b.slug)}` }, 'Gates'),
-            el('a', { class: 'button primary', href: `#/run/${encodeURIComponent(b.slug)}` }, 'Agent')]
+          ? [el('a', { class: 'button', href: `#/film/${encodeURIComponent(b.film.slug)}` }, 'Gates'),
+            el('a', { class: 'button primary', href: `#/run/${encodeURIComponent(b.film.slug)}` }, 'Agent')]
           : el('button', { type: 'button', class: 'primary', onclick: (e) => startFilm(b.slug, e.currentTarget) }, 'Start film'),
       ]),
     ]));
@@ -145,7 +145,7 @@ async function viewList() {
 async function startFilm(slug, btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
   const { res, body } = await post('/api/films', { slug });
-  if (res.status === 201 || res.status === 409) { location.hash = `#/run/${encodeURIComponent(slug)}`; return; }
+  if (res.status === 201 || res.status === 409) { location.hash = `#/run/${encodeURIComponent(body.latest ?? slug)}`; return; }
   if (btn) { btn.disabled = false; btn.textContent = 'Start film'; }
   alert(body.error || `Couldn’t start the film (${res.status}).`);
 }
@@ -397,19 +397,29 @@ async function viewFilm(slug) {
   async function refresh(force = false) {
     const { res, body: f } = await api(`/api/films/${encodeURIComponent(slug)}`);
     if (!res.ok) { fatal(`${escHtml(f.error || 'Film not found.')} <a href="#/">Back to briefs</a>`); return false; }
-    const key = JSON.stringify([f.drift, f.gates.map((g) => [g.state, g.approval, g.evidence, g.updated])]) + (panel ? "" : Math.floor(Date.now() / 60000));
+    const key = JSON.stringify([f.drift, f.version, f.gates.map((g) => [g.state, g.approval, g.evidence, g.updated])]) + (panel ? "" : Math.floor(Date.now() / 60000));
     if (!force && key === lastKey) return true;
     lastKey = key;
-    head.innerHTML = `<h1>${escHtml(slug)}</h1><p><code>${escHtml(f.path)}</code> · ${f.done} of ${f.gates.length} gates done · checks the folder every few seconds${f.gates.at(-1).done ? ` · <a href="#/library/${encodeURIComponent(slug)}">Watch in the library</a>` : ''}</p>`;
+    const vi = f.version;
+    const others = vi.versions.length > 1 ? ' · versions: ' + vi.versions.map((v) => v.slug === slug ? `<b>v${v.version}</b>` : `<a href="#/film/${encodeURIComponent(v.slug)}">v${v.version}</a>`).join(' ') : '';
+    head.innerHTML = `<h1>${escHtml(slug)}</h1><p>${others ? `Version ${vi.version} of <b>${escHtml(vi.base)}</b>${others}<br>` : ''}<code>${escHtml(f.path)}</code> · ${f.done} of ${f.gates.length} gates done · checks the folder every few seconds${f.gates.at(-1).done ? ` · <a href="#/library/${encodeURIComponent(slug)}">Watch in the library</a>` : ''}</p>`;
     drift.textContent = '';
-    if (f.drift === 'changed') drift.append(
+    const showDrift = f.drift === 'changed' && vi.latest;
+    if (showDrift && vi.delivered) drift.append(
+      el('p', {}, 'You edited the brief after this film was delivered. A new version applies it, starting from this one’s assets and style guide. This film stays as delivered.'),
+      el('div', { class: 'acts' }, [
+        el('a', { class: 'button', href: `#/brief/${encodeURIComponent(vi.base)}` }, 'See the brief'),
+        el('button', { type: 'button', class: 'primary', onclick: (e) => makeNextVersion(slug, e.currentTarget) }, `Make v${vi.version + 1}`),
+      ]),
+    );
+    else if (showDrift) drift.append(
       el('p', {}, 'You edited the brief after this film started. The film and its agent still use the old copy in docs/brief.md.'),
       el('div', { class: 'acts' }, [
-        el('a', { class: 'button', href: `#/brief/${encodeURIComponent(slug)}` }, 'See the brief'),
+        el('a', { class: 'button', href: `#/brief/${encodeURIComponent(vi.base)}` }, 'See the brief'),
         el('button', { type: 'button', class: 'primary', onclick: syncBrief }, 'Sync brief into the film'),
       ]),
     );
-    drift.hidden = f.drift !== 'changed';
+    drift.hidden = !showDrift;
     list.textContent = '';
     f.gates.forEach((g, i) => list.append(el('li', { class: 'gate', id: `g-${g.id}`, 'data-state': g.state }, [
       el('span', { class: 'n', 'aria-hidden': 'true' }, String(i + 1)),
@@ -599,6 +609,7 @@ async function viewRun(slug) {
 const NEED_ACTION = {
   shotlist: (n) => el('a', { class: 'button primary', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Read shotlist'),
   brief: (n) => el('a', { class: 'button', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Review and sync'),
+  version: (n) => el('button', { type: 'button', class: 'primary', onclick: (e) => makeNextVersion(n.slug, e.currentTarget) }, 'Make new version'),
   agent: (n) => n.resumable
     ? el('button', { type: 'button', class: 'primary', onclick: (e) => resumeAgent(n.slug, n.session, e.currentTarget) }, 'Resume')
     : el('a', { class: 'button', href: `#/run/${encodeURIComponent(n.slug)}` }, 'Open agent'),
@@ -627,12 +638,22 @@ function renderDash(box, d) {
   if (d.finished.length) {
     box.append(el('h2', { class: 'dash-h' }, [ 'Recently finished ', el('a', { href: '#/library' }, 'Library') ]));
     box.append(el('ul', { class: 'recent' }, d.finished.map((f) => el('li', {}, el('a', { href: `#/library/${encodeURIComponent(f.slug)}` }, [
-      f.poster ? el('img', { src: media(f.slug, f.poster), alt: '', loading: 'lazy' })
-        : el('video', { src: `${media(f.slug, f.video)}#t=1`, preload: 'metadata', muted: true, 'aria-hidden': 'true' }),
-      el('span', {}, `${f.title} · ${f.count} film${f.count === 1 ? '' : 's'}`),
+      cover(f.cover),
+      el('span', {}, `${f.title} · ${f.count} film${f.count === 1 ? '' : 's'}${f.versions > 1 ? ` · ${f.versions} versions` : ''}`),
     ])))));
   }
   if (d.terminal) box.append(el('p', { class: 'meta' }, d.terminal));
+}
+
+// A delivered film's brief changed: make brands/<brand>-vN/ (seeded from the last version) and
+// open its agent page. The delivered film is not touched.
+async function makeNextVersion(slug, btn) {
+  if (!confirm('Make a new version of this film from the edited brief? The delivered version stays exactly as it is; the new one starts with its assets and style guide.')) return;
+  if (btn) btn.disabled = true;
+  const { res, body } = await post(`/api/films/${encodeURIComponent(slug)}/version`, {});
+  if (!res.ok) { if (btn) btn.disabled = false; alert(body.error || 'Couldn’t make the new version.'); return; }
+  pollNeeds();
+  location.hash = `#/run/${encodeURIComponent(body.slug)}`;
 }
 
 async function resumeAgent(slug, session, btn) {
@@ -695,7 +716,7 @@ async function viewAgents() {
     const id = `a-${f.slug}`;
     const sec = el('section', { class: 'agent-film', id }, [
       el('div', { class: 'list-head' }, [
-        el('h2', {}, f.title),
+        el('h2', {}, f.version > 1 ? `${f.title} v${f.version}` : f.title),
         el('div', { class: 'acts' }, [
           el('a', { class: 'button', href: `#/film/${encodeURIComponent(f.slug)}` }, 'Gates'),
           liveSlugs.has(f.slug)
@@ -718,7 +739,7 @@ async function viewAgents() {
       sec.append(el('a', { class: 'transcript', href: `/api/films/${encodeURIComponent(f.slug)}/terminal/log`, target: '_blank', rel: 'noopener' }, 'Read the transcript'));
     }
     page.append(sec);
-    $('#frames').append(el('li', {}, railLink(id, [el('span', { class: 'n' }, liveSlugs.has(f.slug) ? '●' : String(f.history.length)), el('span', { class: 'label' }, f.title)]))); 
+    $('#frames').append(el('li', {}, railLink(id, [el('span', { class: 'n' }, liveSlugs.has(f.slug) ? '●' : String(f.history.length)), el('span', { class: 'label' }, f.version > 1 ? `${f.title} v${f.version}` : f.title)]))); 
   }
 }
 
@@ -728,6 +749,11 @@ const secs = (d) => (d == null ? '' : d < 60 ? `${Math.round(d * 10) / 10}s` : `
 const formatName = (f) => f.charAt(0).toUpperCase() + f.slice(1);
 const media = (slug, file) => `/media/${encodeURIComponent(slug)}/${encodeURIComponent(file)}`;
 
+// A brand's cover: newest version's poster, else its first film's frame at 1s.
+const cover = (c) => c.kind === 'image'
+  ? el('img', { src: media(c.slug, c.file), alt: '', loading: 'lazy' })
+  : el('video', { src: `${media(c.slug, c.file)}#t=1`, preload: 'metadata', muted: true, playsinline: true, 'aria-hidden': 'true' });
+
 async function viewLibrary() {
   shell();
   document.title = 'Library · Motion studio';
@@ -736,57 +762,65 @@ async function viewLibrary() {
   const { res, body: brands } = await api('/api/library');
   if (!res.ok) return fatal('Couldn’t read the library. Is <code>node studio.mjs</code> running?');
   if (!brands.length) {
-    page.append(el('div', { class: 'empty', html: 'No finished films yet. A film lands here when <code>finalize.mjs</code> has written its masters. <a href="#/">Go to briefs</a>' }));
+    page.append(el('div', { class: 'empty', html: 'No finished films yet. A film lands here when <code>finalize.mjs</code> has written its masters. <a href="#/">Go to Home</a>' }));
     return;
   }
-  page.append(el('p', { class: 'lib-sub' }, `${brands.length} brand${brands.length === 1 ? '' : 's'} · ${brands.reduce((n, b) => n + b.videos.length, 0)} films`));
+  page.append(el('p', { class: 'lib-sub' }, `${brands.length} brand${brands.length === 1 ? '' : 's'} · ${brands.reduce((n, b) => n + b.count, 0)} films`));
   const grid = el('ul', { class: 'folders' });
   for (const b of brands) {
-    const first = b.videos[0];
-    const cover = b.poster
-      ? el('img', { src: media(b.slug, b.poster), alt: '', loading: 'lazy' })
-      : el('video', { src: `${media(b.slug, first.file)}#t=1`, preload: 'metadata', muted: true, playsinline: true, 'aria-hidden': 'true' });
-    const formats = [...new Set(b.videos.map((v) => formatName(v.format)))].join(', ');
-    grid.append(el('li', {}, el('a', { class: 'folder', href: `#/library/${encodeURIComponent(b.slug)}`, 'data-stack': Math.min(b.videos.length - 1, 2) }, [
-      el('div', { class: 'mount' }, cover),
+    const top = b.versions[0];
+    const formats = [...new Set(top.videos.map((v) => formatName(v.format)))].join(', ');
+    const meta = [b.versions.length > 1 ? `${b.versions.length} versions, latest v${top.version}` : null,
+      `${b.count} film${b.count === 1 ? '' : 's'}`, formats, secs(top.videos[0].duration), ago(b.updated)].filter(Boolean).join(' · ');
+    // sheets behind the mount: one per extra version, else per extra format (max 2)
+    const stack = Math.min(Math.max(b.versions.length, top.videos.length) - 1, 2);
+    grid.append(el('li', {}, el('a', { class: 'folder', href: `#/library/${encodeURIComponent(b.slug)}`, 'data-stack': stack }, [
+      el('div', { class: 'mount' }, cover(b.cover)),
       el('div', { class: 'fname' }, b.title),
-      el('div', { class: 'fmeta' }, `${b.videos.length} film${b.videos.length === 1 ? '' : 's'} · ${formats} · ${secs(first.duration)} · ${ago(b.updated)}`),
+      el('div', { class: 'fmeta' }, meta),
     ])));
   }
   page.append(grid);
 }
 
+// One brand: a shelf per version, newest first. Each film plays full screen on click.
 async function viewBrand(slug) {
-  shell({ railTitle: 'Films' });
+  shell({ railTitle: 'Versions' });
   document.title = `${slug} · Library · Motion studio`;
   const page = $('#page');
   const { res, body: b } = await api(`/api/library/${encodeURIComponent(slug)}`);
   if (!res.ok) return fatal(`${escHtml(b.error || 'Not found.')} <a href="#/library">Back to the library</a>`);
   document.title = `${b.title} · Library · Motion studio`;
+  const multi = b.versions.length > 1;
   page.append(el('header', { class: 'film-head' }, [
     el('h1', {}, b.title),
-    el('p', { html: `<a href="#/library">Library</a> / <code>brands/${escHtml(slug)}/out/</code> · ${b.videos.length} film${b.videos.length === 1 ? '' : 's'}` }),
+    el('p', { html: `<a href="#/library">Library</a> · ${b.count} film${b.count === 1 ? '' : 's'}${multi ? ` in ${b.versions.length} versions` : ''}` }),
   ]));
-  const shelf = el('ul', { class: 'shelf' });
-  b.videos.forEach((v, i) => {
-    const id = `v-${v.format}-${v.w}x${v.h}`;
-    shelf.append(el('li', { class: 'film', id, style: `--ar:${v.w / v.h}` }, [
-      el('button', { type: 'button', class: 'screen', 'aria-label': `Play ${formatName(v.format)} full screen`, onclick: () => play(b, i) }, [
-        el('video', { src: `${media(slug, v.file)}#t=1`, preload: 'metadata', muted: true, playsinline: true, 'aria-hidden': 'true', tabindex: '-1' }),
+  const frames = $('#frames');
+  for (const v of b.versions) {
+    const id = `ver-${v.version}`;
+    const label = `${b.title}${multi ? ` v${v.version}` : ''}`;
+    const reel = { slug: v.slug, title: label, videos: v.videos };
+    const shelf = el('ul', { class: 'shelf' });
+    v.videos.forEach((f, i) => shelf.append(el('li', { class: 'film', style: `--ar:${f.w / f.h}` }, [
+      el('button', { type: 'button', class: 'screen', 'aria-label': `Play ${label} ${formatName(f.format)} full screen`, onclick: () => play(reel, i) }, [
+        el('video', { src: `${media(v.slug, f.file)}#t=1`, preload: 'metadata', muted: true, playsinline: true, 'aria-hidden': 'true', tabindex: '-1' }),
         el('span', { class: 'play', 'aria-hidden': 'true' }),
       ]),
-      el('div', { class: 'fname' }, `${formatName(v.format)} · ${v.w}×${v.h}`),
-      el('div', { class: 'fmeta' }, [secs(v.duration), v.fps && `${v.fps} fps`, v.audio === false && 'no audio', mb(v.size)].filter(Boolean).join(' · ')),
+      el('div', { class: 'fname' }, `${formatName(f.format)} · ${f.w}×${f.h}`),
+      el('div', { class: 'fmeta' }, [secs(f.duration), f.fps && `${f.fps} fps`, f.audio === false && 'no audio', mb(f.size)].filter(Boolean).join(' · ')),
       el('div', { class: 'dl' }, [
-        el('a', { href: `${media(slug, v.file)}?download=1`, download: v.file }, 'Download master'),
-        v.posting && el('a', { href: `${media(slug, v.posting)}?download=1`, download: v.posting }, `Posting copy (${mb(v.postingSize)})`),
+        el('a', { href: `${media(v.slug, f.file)}?download=1`, download: f.file }, 'Download master'),
+        f.posting && el('a', { href: `${media(v.slug, f.posting)}?download=1`, download: f.posting }, `Posting copy (${mb(f.postingSize)})`),
       ]),
+    ])));
+    page.append(el('section', { class: 'version', id }, [
+      multi ? el('h2', { class: 'ver-h' }, [`Version ${v.version}`, el('span', {}, `${v.version === b.versions[0].version ? 'latest · ' : ''}${ago(v.updated)} · `),
+        el('a', { href: `#/film/${encodeURIComponent(v.slug)}` }, 'Gates')]) : null,
+      shelf,
     ]));
-  });
-  page.append(shelf);
-  const frames = $('#frames');
-  b.videos.forEach((v, i) => frames.append(el('li', {}, railLink(`v-${v.format}-${v.w}x${v.h}`,
-    [el('span', { class: 'n' }, String(i + 1)), el('span', { class: 'label' }, `${formatName(v.format)} ${v.w}×${v.h}`)]))));
+    frames.append(el('li', {}, railLink(id, [el('span', { class: 'n' }, `v${v.version}`), el('span', { class: 'label' }, `${v.videos.length} film${v.videos.length === 1 ? '' : 's'}`)])));
+  }
 }
 
 // Full-screen player. Opens on a click (browsers only allow full screen from a user action);

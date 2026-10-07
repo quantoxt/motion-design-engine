@@ -28,7 +28,7 @@ npm install
 npm install-scripts approve node-pty   # npm blocks native build scripts by default
 npm rebuild node-pty
 npx playwright install chromium
-npm test                                # should print: pass 27, fail 0
+npm test                                # should print: pass 29, fail 0
 ```
 
 If `node-pty` isn't built, the studio still runs; only the in-browser terminal is disabled and
@@ -49,6 +49,10 @@ npm run studio        # → http://127.0.0.1:4321 (opens your browser; --no-open
 4. **Approve the shotlist.** Home shows what needs you. Read the shotlist on the film page and approve
    it; the agent waits for that before writing code.
 5. **Watch it in the Library.** Finished films appear per brand; click one to play it full screen.
+
+**Edited a brief after its film was delivered?** The studio offers **Make new version**: it creates
+`brands/<brand>-v2/` from the new brief, carrying over v1's assets and style guide, and runs the
+pipeline again. v1 stays as delivered; the Library shows both under the same brand.
 
 **Agents** lists every session per film. Claude and OpenCode sessions can be resumed, even after
 restarting the studio.

@@ -108,6 +108,31 @@ export async function gates(root, slug) {
   return { slug, path: `brands/${slug}/`, gates: list, done: list.filter((g) => g.done).length };
 }
 
+// ── Versions ─────────────────────────────────────────────────────
+// A brand has one brief (_raw/<brand>.md) and one or more films: brands/<brand>/ is v1,
+// brands/<brand>-v2/, -v3/… are later versions made after a delivered film's brief changed.
+// `<x>-vN` counts as a version only if brands/<x>/ exists, so a brand that is really called
+// "acme-v2" still works on its own.
+export function splitVersion(root, slug) {
+  const m = slug.match(/^(.+)-v(\d+)$/);
+  if (m && Number(m[2]) >= 2 && existsSync(join(root, 'brands', m[1]))) return { base: m[1], version: Number(m[2]) };
+  return { base: slug, version: 1 };
+}
+const versionSlug = (base, n) => (n === 1 ? base : `${base}-v${n}`);
+
+// Every film folder of a brand, oldest first: [{ slug, version }].
+export async function versions(root, base) {
+  let names = [];
+  try { names = (await readdir(join(root, 'brands'), { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name); } catch {}
+  const out = [];
+  if (names.includes(base)) out.push({ slug: base, version: 1 });
+  for (const n of names) {
+    const m = n.startsWith(`${base}-v`) && n.slice(base.length).match(/^-v(\d+)$/);
+    if (m && Number(m[1]) >= 2 && out.length) out.push({ slug: n, version: Number(m[1]) });
+  }
+  return out.sort((a, b) => a.version - b.version);
+}
+
 // Every film folder (brands/<slug>/ with a docs/brief.md), `_`-folders skipped.
 export async function films(root) {
   try {
@@ -117,40 +142,134 @@ export async function films(root) {
   } catch { return []; }
 }
 
-// Has the brief in _raw/ been edited since the film took its copy?
-// 'same' | 'changed' | 'no-source' (no _raw/<slug>.md to compare against)
+const briefSource = (root, slug) => join(root, '_raw', `${splitVersion(root, slug).base}.md`);
+const delivered = async (root, slug) => (await gates(root, slug))?.gates.at(-1).done ?? false;
+
+// Has the brand's brief been edited since this film took its copy?
+// 'same' | 'changed' | 'no-source' (no _raw/<brand>.md to compare against)
 export async function briefDrift(root, slug) {
-  const raw = await read(join(root, '_raw', `${slug}.md`));
+  const raw = await read(briefSource(root, slug));
   const copy = await read(join(root, 'brands', slug, 'docs', 'brief.md'));
   if (raw == null || copy == null) return 'no-source';
   return raw === copy ? 'same' : 'changed';
 }
 
-// Copy the edited brief into the film. Only docs/brief.md changes: film.json may have been
-// tuned by the agent since, so it's left alone (the agent re-reads the brief and adjusts).
+// Copy the edited brief into a film that's still in production. Only docs/brief.md changes:
+// film.json may have been tuned by the agent since, so it's left alone. A delivered film is
+// never changed: make a new version instead.
 export async function syncBrief(root, slug) {
   const dir = join(root, 'brands', slug);
   if (!existsSync(dir)) return { status: 404, error: `brands/${slug}/ doesn't exist.` };
-  const raw = await read(join(root, '_raw', `${slug}.md`));
-  if (raw == null) return { status: 404, error: `_raw/${slug}.md doesn't exist.` };
+  const raw = await read(briefSource(root, slug));
+  if (raw == null) return { status: 404, error: `_raw/${splitVersion(root, slug).base}.md doesn't exist.` };
+  if (await delivered(root, slug)) return { status: 409, error: 'This film is delivered. Make a new version instead, so the delivered one stays as it is.' };
   await writeFile(join(dir, 'docs', 'brief.md'), raw);
   return { status: 200 };
 }
 
+// Split a brief into its ## sections, to say which ones changed between versions.
+function sections(md) {
+  const out = new Map();
+  let head = '(top)', body = [];
+  for (const line of (md ?? '').split('\n')) {
+    if (/^## /.test(line)) { out.set(head, body.join('\n').trim()); head = line.slice(3).trim(); body = []; }
+    else body.push(line);
+  }
+  out.set(head, body.join('\n').trim());
+  return out;
+}
+export function briefChanges(oldMd, newMd) {
+  const a = sections(oldMd), b = sections(newMd);
+  const changed = [], added = [], removed = [], same = [];
+  for (const [h, t] of b) (!a.has(h) ? added : a.get(h) === t ? same : changed).push(h);
+  for (const h of a.keys()) if (!b.has(h)) removed.push(h);
+  return { changed, added, removed, same };
+}
+
+// Make the next version of a delivered film whose brief has changed (unchanged brief → 409): brands/<brand>-vN/ from the current brief, seeded
+// with the previous version's research (assets/, style guide, film.json tuning) so the agent
+// doesn't redo it, plus docs/previous-version.md saying where v(N-1) is and what changed.
+export async function makeVersion(root, slug) {
+  const { base } = splitVersion(root, slug);
+  const all = await versions(root, base);
+  if (!all.length) return { status: 404, error: `brands/${base}/ doesn't exist.` };
+  const prev = all.at(-1);
+  if (!(await delivered(root, prev.slug))) {
+    return { status: 409, error: `${prev.slug} isn’t delivered yet. Sync the brief into it instead.`, latest: prev.slug };
+  }
+  const raw = await read(join(root, '_raw', `${base}.md`));
+  if (raw == null) return { status: 404, error: `_raw/${base}.md doesn't exist.` };
+  // Only a brief change makes a new version: same brief, same film.
+  if (raw === await read(join(root, 'brands', prev.slug, 'docs', 'brief.md'))) {
+    return { status: 409, error: `The brief hasn’t changed since ${prev.slug}. Edit the brief first; a new version only applies brief changes.`, latest: prev.slug };
+  }
+  const version = prev.version + 1, next = versionSlug(base, version);
+  const src = join(root, 'brands', prev.slug), dest = join(root, 'brands', next);
+  if (existsSync(dest)) return { status: 409, error: `brands/${next}/ already exists.`, latest: next };
+
+  await cp(join(root, 'brands', '_template'), dest, { recursive: true, errorOnExist: true, force: false });
+  await writeFile(join(dest, 'docs', 'brief.md'), raw);
+  // Research carried over: assets and the style guide (the agent replaces what no longer fits).
+  if (existsSync(join(src, 'assets'))) await cp(join(src, 'assets'), join(dest, 'assets'), { recursive: true, force: true });
+  const guide = await read(join(src, 'docs', 'style_guide.md'));
+  if (guide != null) await writeFile(join(dest, 'docs', 'style_guide.md'), guide);
+  // film.json: the previous version's tuning, with the new brief's duration/formats/tempo on top.
+  const model = parse(await readFile(join(root, '_raw', 'brief-template.md'), 'utf8'));
+  let film;
+  try { film = JSON.parse(await readFile(join(src, 'film.json'), 'utf8')); } catch { film = JSON.parse(await readFile(join(dest, 'film.json'), 'utf8')); }
+  await writeFile(join(dest, 'film.json'), JSON.stringify({ ...film, ...filmSettings(model, readBack(model, raw).state) }, null, 2) + '\n');
+
+  const diff = briefChanges(await read(join(src, 'docs', 'brief.md')), raw);
+  const assetCount = (await files(join(dest, 'assets'))).length;
+  const list = (xs) => (xs.length ? xs.join(' · ') : 'none');
+  await writeFile(join(dest, 'docs', 'previous-version.md'), `# v${version} of ${base}
+
+This film is a new version. The previous one is **brands/${prev.slug}/** (v${prev.version}, delivered).
+Read it, never write to it.
+
+## Carried over (reuse what still fits the new brief, replace what doesn't)
+- \`assets/\`: ${assetCount} file${assetCount === 1 ? '' : 's'} copied from v${prev.version}
+- \`docs/style_guide.md\` ${guide == null ? '(v' + prev.version + ' had none: write it)' : 'copied from v' + prev.version}
+- \`film.json\`: v${prev.version}'s settings, with this brief's duration, formats and tempo applied
+
+Also worth reading in brands/${prev.slug}/: \`docs/shotlist.md\`, \`index.html\`, \`docs/review_log.md\`.
+
+## What changed in the brief since v${prev.version}
+- Changed: ${list(diff.changed)}
+- Added: ${list(diff.added)}
+- Removed: ${list(diff.removed)}
+
+## What to do
+Run the full pipeline for v${version}: check the carried-over assets and style guide against the
+changes above, then a new shotlist (it needs a fresh approval), animatic, critique, render, finalize.
+Finals are named \`${next}-<format>-<W>x<H>.mp4\`. Say which parts of v${prev.version} you're reusing.
+`);
+  return { status: 201, path: `brands/${next}/`, slug: next, version, previous: prev.slug, changes: diff };
+}
+
 // What needs the user, across films: shotlists waiting for an OK, briefs edited after the
-// film started, and agents that stopped on an error or were cut off by a studio restart.
-// `history(slug)` comes from the terminal manager (newest first), optional.
+// film started (newest version of each brand only), and agents that stopped on an error or
+// were cut off by a studio restart. `history(slug)` comes from the terminal manager.
 export async function attention(root, history = () => []) {
   const items = [];
-  for (const slug of await films(root)) {
+  const all = await films(root);
+  const latest = new Map();   // brand → newest version's slug
+  for (const slug of all) {
+    const { base, version } = splitVersion(root, slug);
+    const cur = latest.get(base);
+    if (!cur || version > cur.version) latest.set(base, { slug, version });
+  }
+  for (const slug of all) {
     const g = await gates(root, slug);
     const shot = g.gates.find((x) => x.id === 'shotlist');
     if (shot.approval === 'waiting' || shot.approval === 'stale') {
       items.push({ slug, kind: 'shotlist', key: `shotlist:${slug}:${shot.approval}`,
         text: shot.approval === 'stale' ? 'Shotlist changed after you approved it. It needs your OK again.' : 'Shotlist is ready for your OK.' });
     }
-    if (await briefDrift(root, slug) === 'changed') {
-      items.push({ slug, kind: 'brief', key: `brief:${slug}`, text: 'You edited the brief after the film started. The film still has the old copy.' });
+    if (latest.get(splitVersion(root, slug).base).slug === slug && await briefDrift(root, slug) === 'changed') {
+      items.push(g.gates.at(-1).done
+        ? { slug, kind: 'version', key: `version:${slug}`, text: 'You edited the brief after this film was delivered. Make a new version to apply it.' }
+        : { slug, kind: 'brief', key: `brief:${slug}`, text: 'You edited the brief after the film started. The film still has the old copy.' });
     }
     const last = history(slug)[0];
     if (last && (last.state === 'interrupted' || (last.state === 'exited' && last.exitCode !== 0 && last.exitCode !== 129))) {
@@ -160,4 +279,11 @@ export async function attention(root, history = () => []) {
     }
   }
   return items;
+}
+
+// Version info for a film page: which version it is, its siblings, and whether it's delivered.
+export async function versionInfo(root, slug) {
+  const { base, version } = splitVersion(root, slug);
+  const all = await versions(root, base);
+  return { base, version, versions: all, latest: all.at(-1)?.slug === slug, delivered: await delivered(root, slug) };
 }

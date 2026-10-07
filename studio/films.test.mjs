@@ -1,11 +1,11 @@
 // Scaffold + gates against a throwaway copy of the factory layout (never touches brands/).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, cpSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, cpSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, films, briefDrift, syncBrief, attention } from './films.mjs';
+import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, films, briefDrift, syncBrief, attention, makeVersion, splitVersion, versions } from './films.mjs';
 import { execFileSync } from 'node:child_process';
 import { parse, serialize } from './brief.mjs';
 
@@ -108,6 +108,8 @@ test('brief drift, sync, and what needs you', async () => {
   assert.equal(await briefDrift(root, 'acme'), 'same');
   writeFileSync(join(dir, 'docs/shotlist.md'), '# Shotlist v3\n');
   await revokeShotlist(root, 'acme');
+  // in production (not delivered): hide the master for this part
+  renameSync(join(dir, 'out/acme-vertical-1080x1920.mp4'), join(dir, 'out/hidden.mp4'));
 
   const raw = readFileSync(join(root, '_raw/acme.md'), 'utf8');
   writeFileSync(join(root, '_raw/acme.md'), raw + '\nOne more note.\n');
@@ -120,8 +122,59 @@ test('brief drift, sync, and what needs you', async () => {
   // a user-stopped agent (129) or a clean exit is not your problem
   assert.deepEqual((await attention(root, () => [{ id: 'x', state: 'exited', exitCode: 129 }])).map((i) => i.kind), ['shotlist', 'brief']);
 
+  assert.equal((await makeVersion(root, 'acme')).status, 409, 'no v2 of a film still in production');
   assert.equal((await syncBrief(root, 'acme')).status, 200);
   assert.equal(await briefDrift(root, 'acme'), 'same');
   assert.equal(readFileSync(join(dir, 'docs/brief.md'), 'utf8'), raw + '\nOne more note.\n');
   assert.equal((await syncBrief(root, 'missing')).status, 404);
+  renameSync(join(dir, 'out/hidden.mp4'), join(dir, 'out/acme-vertical-1080x1920.mp4'));
+});
+
+test('a delivered film is never synced: its brief change makes v2, seeded from v1', async () => {
+  const v1 = join(root, 'brands/acme');
+  writeFileSync(join(v1, 'docs/style_guide.md'), '# Style guide — Acme (researched)\n');
+  writeFileSync(join(v1, 'film.json'), JSON.stringify({ ...JSON.parse(readFileSync(join(v1, 'film.json'), 'utf8')), sub: 6 }));
+  // the brief changes after delivery: 20s → 30s
+  const model = parse(TEMPLATE);
+  const blocks = model.sections.flatMap((x) => x.blocks);
+  const opt = (label, re) => blocks.find((b) => b.label === label).options.find((o) => re.test(o.parts[0].text)).line;
+  writeFileSync(join(root, '_raw/acme.md'), serialize(model, {
+    checks: { [opt('Duration', /^30s/)]: true, [opt('Formats', /^9:16/)]: true, [opt('Tempo', /^110/)]: true },
+    inputs: { [model.head.title.line]: ['Acme'] },
+  }));
+  assert.deepEqual((await attention(root)).filter((i) => i.slug === 'acme').map((i) => i.kind), ['shotlist', 'version']);
+  // same brief as the delivered film → no new version
+  const changed = readFileSync(join(root, '_raw/acme.md'), 'utf8');
+  writeFileSync(join(root, '_raw/acme.md'), readFileSync(join(v1, 'docs/brief.md'), 'utf8'));
+  assert.equal((await makeVersion(root, 'acme')).status, 409, 'no redo without a brief change');
+  writeFileSync(join(root, '_raw/acme.md'), changed);
+  assert.equal((await syncBrief(root, 'acme')).status, 409, 'delivered film is left as delivered');
+
+  const r = await makeVersion(root, 'acme');
+  assert.equal(r.status, 201);
+  assert.equal(r.slug, 'acme-v2');
+  const v2 = join(root, 'brands/acme-v2');
+  assert.equal(readFileSync(join(v2, 'docs/brief.md'), 'utf8'), readFileSync(join(root, '_raw/acme.md'), 'utf8'));
+  assert.ok(existsSync(join(v2, 'assets/logo.png')), 'assets carried over');
+  assert.match(readFileSync(join(v2, 'docs/style_guide.md'), 'utf8'), /researched/);
+  const film = JSON.parse(readFileSync(join(v2, 'film.json'), 'utf8'));
+  assert.equal(film.sub, 6, 'v1 tuning kept');
+  assert.equal(film.dur, 30, 'new brief applied');
+  const note = readFileSync(join(v2, 'docs/previous-version.md'), 'utf8');
+  assert.match(note, /brands\/acme\//);
+  assert.ok(r.changes.changed.length > 0);
+  assert.ok(!existsSync(join(v2, 'docs/shotlist.md')) && !existsSync(join(v2, 'docs/approvals.json')), 'shotlist and approval start fresh');
+  assert.ok(!existsSync(join(v2, 'out/acme-vertical-1080x1920.mp4')), 'v1 renders not copied');
+
+  // v2 has research already: the assets gate is done, the shotlist gate is next
+  const g = await gates(root, 'acme-v2');
+  assert.deepEqual(g.gates.slice(0, 3).map((x) => x.state), ['done', 'done', 'current']);
+  assert.deepEqual(splitVersion(root, 'acme-v2'), { base: 'acme', version: 2 });
+  assert.deepEqual(splitVersion(root, 'nobody-v2'), { base: 'nobody-v2', version: 1 }, 'a real brand called x-v2');
+  assert.deepEqual((await versions(root, 'acme')).map((v) => v.slug), ['acme', 'acme-v2']);
+  // drift now follows the newest version only; v1 stays quiet
+  assert.equal(await briefDrift(root, 'acme-v2'), 'same');
+  assert.deepEqual((await attention(root)).map((i) => `${i.slug}:${i.kind}`), ['acme:shotlist']);
+  assert.equal((await makeVersion(root, 'acme')).status, 409, 'v3 waits until v2 is delivered');
+  rmSync(v2, { recursive: true });
 });

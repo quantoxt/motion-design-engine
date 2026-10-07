@@ -100,7 +100,7 @@ a local terminal. Everything runs on localhost.
 6. `npm test` covers: session create/reattach/kill, slug validation, output log cap. ✓ See below.
 7. (added) Resume: Claude by `--session-id`, OpenCode by first-message binding. ✓ Both verified for real.
 
-## Tests (`npm test`, 27 in total; terminal ones in `studio/terminal.test.mjs`, 6)
+## Tests (`npm test`, 29 in total; terminal ones in `studio/terminal.test.mjs`, 6)
 - Preset/custom commands: `--session-id`/`--name`, `--resume`, `opencode --prompt` / `--session`, `<brief>` expansion.
 - Create, stream, input, resize, reattach while alive, film isolation, kill (129), respawn with a new id, transcript.
 - Spawn failure reported (500), not thrown.

@@ -7,7 +7,7 @@
 //   GET  /api/briefs/:slug one brief's markdown (to reopen and edit)
 //   POST /api/briefs       { slug, md, overwrite? } → writes _raw/<slug>.md (409 if it exists)
 //   POST /api/films        { slug } → scaffolds brands/<slug>/ from brands/_template (409 if it exists)
-//   GET  /api/films/:slug  gate status, read from the files in brands/<slug>/, + brief drift vs _raw/
+//   GET  /api/films/:slug  gate status, read from the files in brands/<slug>/, + brief drift vs _raw/ + version info
 //   GET  /api/films/:slug/shotlist          shotlist text + its sha256 + current approval
 //   POST /api/films/:slug/shotlist/approve  { sha256 } of the version you read → docs/approvals.json
 //   POST /api/films/:slug/shotlist/revoke   withdraw the approval
@@ -17,7 +17,8 @@
 //   GET  /api/dashboard      needs you (shotlist OKs, edited briefs, failed agents) · running agents · recent films
 //   GET  /api/agents         running sessions + every film's session history (Claude and OpenCode sessions resume)
 //   GET  /api/films/:slug/terminal/log  the film's transcript as plain text (escape codes stripped)
-//   POST /api/films/:slug/brief/sync    copy the edited _raw/<slug>.md into brands/<slug>/docs/brief.md
+//   POST /api/films/:slug/brief/sync    copy the edited brief into a film in production (409 once delivered)
+//   POST /api/films/:slug/version       delivered film + changed brief → brands/<brand>-vN/, seeded from the last version
 //   GET  /api/library        brands with finished films (out/<slug>-<format>-<W>x<H>.mp4)
 //   GET  /api/library/:slug  one brand's finished films with size, duration, fps
 //   GET  /media/:slug/:file  a final, poster.png, contact.png or animatic.mp4 from brands/<slug>/out/ (Range for seeking; ?download=1 to save)
@@ -25,7 +26,7 @@
 //
 // Local only: binds 127.0.0.1, answers only its own Host, writes need a same-origin Origin.
 // Writes: _raw/<slug>.md, brands/<slug>/ (scaffold, docs/brief.md sync, docs/approvals.json,
-// out/terminal.log, out/agent-sessions.json). Slugs are validated; nothing else is written.
+// out/terminal.log, out/agent-sessions.json), brands/<brand>-vN/ (new version). Slugs are validated; nothing else is written.
 import { createServer } from 'node:http';
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
 import { existsSync, createReadStream } from 'node:fs';
@@ -35,7 +36,8 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { WebSocketServer } from 'ws';
 import { SLUG, briefTitle } from './studio/brief.mjs';
-import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, films, briefDrift, syncBrief, attention } from './studio/films.mjs';
+import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, films, briefDrift, syncBrief, attention,
+  makeVersion, versionInfo, versions, splitVersion } from './studio/films.mjs';
 import { createTerminals } from './studio/terminal.mjs';
 import { library, brand, mediaFile } from './studio/library.mjs';
 
@@ -87,9 +89,12 @@ async function api(req, res, path) {
     const names = (await readdir(RAW)).filter((f) => f.endsWith('.md') && f !== 'brief-template.md');
     const list = await Promise.all(names.map(async (f) => {
       const slug = f.slice(0, -3), file = join(RAW, f);
-      const film = validSlug(slug) ? await gates(ROOT, slug) : null;
+      // A brand's progress is its newest version's.
+      const latest = validSlug(slug) ? (await versions(ROOT, slug)).at(-1) : null;
+      const film = latest ? await gates(ROOT, latest.slug) : null;
       return { slug, title: briefTitle(await readFile(file, 'utf8')), modified: (await stat(file)).mtime,
-        film: film && { done: film.done, total: film.gates.length, current: film.gates.find((g) => g.state === 'current')?.name ?? null } };
+        film: film && { slug: latest.slug, version: latest.version, done: film.done, total: film.gates.length,
+          current: film.gates.find((g) => g.state === 'current')?.name ?? null } };
     }));
     return send(res, 200, list.sort((a, b) => b.modified - a.modified));
   }
@@ -99,11 +104,11 @@ async function api(req, res, path) {
   if (path === '/api/dashboard' && req.method === 'GET') {
     const lib = await library(ROOT);
     return send(res, 200, { needs: await attention(ROOT, history), running: terminals?.live() ?? [],
-      finished: lib.slice(0, 4).map((b) => ({ slug: b.slug, title: b.title, poster: b.poster, video: b.videos[0].file, count: b.videos.length, updated: b.updated })),
+      finished: lib.slice(0, 4).map((b) => ({ slug: b.slug, title: b.title, cover: b.cover, count: b.count, versions: b.versions.length, updated: b.updated })),
       terminal: terminals ? null : ptyError });
   }
   if (path === '/api/agents' && req.method === 'GET') {
-    const list = await Promise.all((await films(ROOT)).map(async (slug) => ({ slug, title: await titleOf(slug), history: history(slug) })));
+    const list = await Promise.all((await films(ROOT)).map(async (slug) => ({ slug, title: await titleOf(slug), version: splitVersion(ROOT, slug).version, history: history(slug) })));
     return send(res, 200, { live: terminals?.live() ?? [], films: list, terminal: terminals ? null : ptyError });
   }
   const lib = path.match(/^\/api\/library\/([^/]+)$/);
@@ -123,7 +128,8 @@ async function api(req, res, path) {
       return existsSync(file) ? send(res, 200, await readFile(file, 'utf8'), 'text/markdown; charset=utf-8') : send(res, 404, { error: `_raw/${slug}.md doesn't exist.` });
     }
     const g = await gates(ROOT, slug);
-    return g ? send(res, 200, { ...g, drift: await briefDrift(ROOT, slug) }) : send(res, 404, { error: `brands/${slug}/ doesn't exist yet.` });
+    return g ? send(res, 200, { ...g, drift: await briefDrift(ROOT, slug), version: await versionInfo(ROOT, slug) })
+      : send(res, 404, { error: `brands/${slug}/ doesn't exist yet.` });
   }
 
   if (req.method === 'POST' || req.method === 'DELETE') {
@@ -132,7 +138,7 @@ async function api(req, res, path) {
     if (origin && !sameOrigin(origin)) return send(res, 403, { error: 'Cross-origin request refused.' });
   }
 
-  const sub = path.match(/^\/api\/films\/([^/]+)\/(terminal\/log|brief\/sync)$/);
+  const sub = path.match(/^\/api\/films\/([^/]+)\/(terminal\/log|brief\/sync|version)$/);
   if (sub) {
     const slug = decodeURIComponent(sub[1]);
     if (!validSlug(slug)) return send(res, 400, { error: 'Invalid name.' });
@@ -140,6 +146,11 @@ async function api(req, res, path) {
       const file = join(ROOT, 'brands', slug, 'out', 'terminal.log');
       if (!existsSync(file)) return send(res, 404, { error: 'No transcript yet.' });
       return send(res, 200, plainLog(await readFile(file, 'utf8')), 'text/plain; charset=utf-8');
+    }
+    if (sub[2] === 'version' && req.method === 'POST') {
+      const r = await makeVersion(ROOT, slug);
+      if (r.status === 201) console.log(`made ${r.path} (v${r.version}, from brands/${r.previous}/)`);
+      return send(res, r.status, r);
     }
     if (sub[2] === 'brief/sync' && req.method === 'POST') {
       const r = await syncBrief(ROOT, slug);
@@ -189,6 +200,7 @@ async function api(req, res, path) {
     if (!validSlug(body?.slug)) return send(res, 400, { error: 'Invalid name.' });
     const r = await scaffold(ROOT, body.slug);
     if (r.status === 201) console.log(`scaffolded ${r.path}`);
+    if (r.status === 409) r.latest = (await versions(ROOT, body.slug)).at(-1)?.slug ?? body.slug;   // Start film on an existing brand opens its newest version
     return send(res, r.status, r);
   }
 

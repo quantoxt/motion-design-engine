@@ -18,6 +18,11 @@ Every film lives in its own `brands/<name>/` folder. Never mix brand files into 
    (one `## Round N` heading per round), `out/silent*.mp4`, `out/<slug>-<format>-<W>x<H>.mp4` (written by finalize) + `contact.png` + `poster.png`.
    If the user says they synced the brief (studio **Sync brief into the film**), re-read `docs/brief.md`
    and say what changes for the film before continuing.
+   **New version** (`brands/<brand>-vN/` with `docs/previous-version.md`): read that file first. The previous
+   version's assets, style guide and film.json are already copied in; check them against the brief changes it
+   lists and reuse what fits instead of re-researching. Read the previous version's shotlist and `index.html`
+   for what worked. Never write to the previous version's folder. Then run the full pipeline: a new shotlist
+   (fresh approval), animatic, critique, render, finalize. Finals come out as `<brand>-vN-<format>-…mp4`.
 2. **Collect inputs first.** Product + URL/repo, duration, formats, brand colors + fonts,
    a reference (frame, video, or image folder), music (file or "synthesize").
    Ask the hero-metric question; never invent numbers — pull copy from the real

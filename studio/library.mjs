@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { briefTitle } from './brief.mjs';
+import { splitVersion, versions } from './films.mjs';
 
 const run = promisify(execFile);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -51,9 +52,8 @@ async function title(root, slug) {
   return slug;
 }
 
-// One brand's library page: every master with its metadata, plus the poster.
-export async function brand(root, slug) {
-  if (!existsSync(join(root, 'brands', slug))) return null;
+// One version's finished films (one film folder): every master with its metadata, plus the poster.
+async function versionFilms(root, slug, version) {
   const list = await finals(root, slug);
   if (!list.length) return null;
   const out = join(root, 'brands', slug, 'out');
@@ -61,15 +61,31 @@ export async function brand(root, slug) {
     ...v, ...(await probe(join(out, v.file))),
     postingSize: v.posting ? (await stat(join(out, v.posting))).size : null,
   })));
-  return { slug, title: await title(root, slug), poster: existsSync(join(out, 'poster.png')) ? 'poster.png' : null,
+  return { slug, version, poster: existsSync(join(out, 'poster.png')) ? 'poster.png' : null,
     videos, updated: videos.map((v) => v.modified).sort().at(-1) };
 }
 
-// Every brand with at least one finished film, newest first. `_`-folders (the template) are skipped.
+// One brand in the library: all its versions with finished films, newest version first.
+// Asking for brands/acme-v2 gives the same brand as brands/acme.
+// cover = what to show on the brand's folder (newest version's poster, else its first film).
+export async function brand(root, slug) {
+  const { base } = splitVersion(root, slug);
+  if (!existsSync(join(root, 'brands', base))) return null;
+  const vs = (await Promise.all((await versions(root, base)).map((v) => versionFilms(root, v.slug, v.version)))).filter(Boolean).reverse();
+  if (!vs.length) return null;
+  const top = vs[0];
+  return { slug: base, title: await title(root, base), versions: vs,
+    cover: top.poster ? { slug: top.slug, file: top.poster, kind: 'image' } : { slug: top.slug, file: top.videos[0].file, kind: 'video' },
+    count: vs.reduce((n, v) => n + v.videos.length, 0), updated: vs.map((v) => v.updated).sort().at(-1) };
+}
+
+// Every brand with at least one finished film, newest first. Versions fold into their brand;
+// `_`-folders (the template) are skipped.
 export async function library(root) {
   let dirs = [];
   try { dirs = (await readdir(join(root, 'brands'), { withFileTypes: true })).filter((d) => d.isDirectory() && !d.name.startsWith('_') && !d.name.startsWith('.')); } catch {}
-  const brands = (await Promise.all(dirs.map((d) => brand(root, d.name)))).filter(Boolean);
+  const bases = [...new Set(dirs.map((d) => splitVersion(root, d.name).base))];
+  const brands = (await Promise.all(bases.map((b) => brand(root, b)))).filter(Boolean);
   return brands.sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? ''));
 }
 

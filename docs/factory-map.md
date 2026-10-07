@@ -21,18 +21,19 @@ MOTION DESIGN/
     index.html, app.mjs     # UI: Home (#/: needs you, running, recent, briefs; navbar badge + alerts),
                             # brief editor (#/brief/<slug>), film gates (#/film/<slug>), agent terminal (#/run/<slug>),
                             # Agents (#/agents), Film Library (#/library, #/library/<slug>)
-    library.mjs             # Library: finished films per brand (finalize's naming), ffprobe metadata,
+    library.mjs             # Library: finished films per brand, versions folded in (finalize's naming), ffprobe metadata,
                             # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4; nothing else)
     brief.mjs               # template ⇄ form model: parse / serialize / readBack / filmSettings (shared with tests)
     films.mjs               # Start film (scaffold brands/<slug>/ from _template), gate status from files,
                             # shotlist approval → brands/<slug>/docs/approvals.json (sha256 of the approved text),
-                            # brief drift + sync (_raw/ → docs/brief.md), "needs you" items for Home
+                            # brief drift + sync (_raw/ → docs/brief.md), "needs you" items for Home,
+                            # versions: brands/<brand>-vN/ via makeVersion (seeded from the last version)
     terminal.mjs            # agent sessions: one node-pty PTY per film, scrollback replay,
                             # transcript → brands/<slug>/out/terminal.log (1 MB cap), session history +
                             # resume ids (Claude --session-id, OpenCode found by first message) → out/agent-sessions.json.
                             # Spec: docs/terminal-spec.md
     fonts/                  # Bricolage Grotesque woff2 + OFL (bundled, works offline)
-    *.test.mjs              # `npm test` (27): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
+    *.test.mjs              # `npm test` (29): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
                             # terminal sessions + resume (fake PTY / fake OpenCode), library + media allowlist (no browser)
   render.mjs                # serial reference renderer (reads film.json, ?w&h override)
   render-parallel.mjs       # DEFAULT renderer: parallel workers, byte-identical output
@@ -62,6 +63,8 @@ MOTION DESIGN/
     _template/              # new-film scaffold: index.html starter, film.json,
                             # docs/{style_guide.md, README}, assets/, out/ (.gitkeep so clones keep them)
                             # the only brands/ folder in git; every film folder is gitignored
+    <brand>/, <brand>-v2/   # a film and its later versions (one brief: _raw/<brand>.md). A version folder
+                            # has docs/previous-version.md; earlier versions are read-only once delivered
     quantoxt/               # first film (FROZEN — do not modify): index.html, assets/,
                             # docs/, beats.json, music.mjs, out/ (quantoxt-vertical-1080x1920.mp4 et al.)
   .claude/skills/motion-reel/SKILL.md  # the factory door: one-sentence entry
