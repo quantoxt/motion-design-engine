@@ -1,12 +1,13 @@
 // Server-side film helpers: scaffold brands/<slug>/ from the template, and read gate
 // status from the files the pipeline produces. Pure file checks, no state of its own.
-import { cp, readFile, writeFile, readdir, stat } from 'node:fs/promises';
+import { cp, readFile, writeFile, readdir, stat, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse, readBack, filmSettings } from './brief.mjs';
 import { finals } from './library.mjs';
 import { CHECKS, readResult, primaryReview, fingerprint } from '../lib/gate.mjs';
+import { createRefs } from './refs.mjs';
 
 const mtime = async (p) => { try { return (await stat(p)).mtime.toISOString(); } catch { return null; } };
 // Every file under dir, subfolders included (assets usually live in assets/fonts/, assets/logo/…).
@@ -86,6 +87,7 @@ export async function scaffold(root, slug) {
   const settings = filmSettings(model, readBack(model, md).state);
   const film = JSON.parse(await readFile(join(dest, 'film.json'), 'utf8'));
   await writeFile(join(dest, 'film.json'), JSON.stringify({ ...film, ...settings }, null, 2) + '\n');
+  await refs.copyInto(root, slug, dest);   // design references + refs.md
   return { status: 201, path: `brands/${slug}/`, settings };
 }
 
@@ -204,6 +206,14 @@ export async function films(root) {
 }
 
 const briefSource = (root, slug) => join(root, '_raw', `${splitVersion(root, slug).base}.md`);
+// Design references uploaded with a brand's brief (_raw/<brand>.refs/, see studio/refs.mjs). Changes reach every
+// version of the film still in production; a delivered film keeps the references it was made with.
+export const refs = createRefs({ briefs: '_raw', targets: async (root, base) => {
+  const out = [];
+  for (const v of await versions(root, base)) if (!(await delivered(root, v.slug))) out.push(join(root, 'brands', v.slug));
+  return out;
+} });
+
 const delivered = async (root, slug) => (await gates(root, slug))?.gates.at(-1).done ?? false;
 
 // Has the brand's brief been edited since this film took its copy?
@@ -272,6 +282,8 @@ export async function makeVersion(root, slug) {
   await writeFile(join(dest, 'docs', 'brief.md'), raw);
   // Research carried over: assets, the style guide and lessons (the agent replaces what no longer fits).
   if (existsSync(join(src, 'assets'))) await cp(join(src, 'assets'), join(dest, 'assets'), { recursive: true, force: true });
+  await rm(join(dest, 'assets', 'refs'), { recursive: true, force: true });
+  await refs.copyInto(root, base, dest);   // the brief's references as they are now, not v(N-1)'s
   const guide = await read(join(src, 'docs', 'style_guide.md'));
   if (guide != null) await writeFile(join(dest, 'docs', 'style_guide.md'), guide);
   const lessons = await read(join(src, 'docs', 'lessons.md'));

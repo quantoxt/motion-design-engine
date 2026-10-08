@@ -4,8 +4,7 @@
 //   GET  /api/pge/template               pge/brief-template.md
 //   GET  /api/pge/briefs                 saved image briefs (+ the job's progress)
 //   GET  /api/pge/briefs/:slug           one brief's markdown
-//   GET|POST /api/pge/briefs/:slug/refs  design references (POST: raw image bytes, ?name=); DELETE …/refs/:name
-//   GET  /pge-media/:slug/_refs/:name    one reference image
+//   GET|POST /api/pge/briefs/:slug/refs  design references (POST: raw bytes, ?name=); GET|PUT { note }|DELETE …/refs/:name
 //   POST /api/pge/briefs                 { slug, md, overwrite? } → pge/briefs/<slug>.md (409 if it exists)
 //   GET  /api/pge/jobs                   every job: progress, cover image, final count
 //   POST /api/pge/jobs                   { slug } → scaffold pge/jobs/<slug>/ from pge/_template (409 if it exists)
@@ -17,8 +16,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync, createReadStream, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { BRIEFS, JOBS, briefs, jobs, gates, images, scaffold, planFile, approvePlan, revokePlan, mediaPath, finalFiles,
-  listRefs, addRef, removeRef, refPath, REF_MAX } from './jobs.mjs';
+import { BRIEFS, JOBS, briefs, jobs, gates, images, scaffold, planFile, approvePlan, revokePlan, mediaPath, finalFiles, refs } from './jobs.mjs';
+import { refsRoute } from '../../studio/refs.mjs';
 import { zip } from '../lib/zip.mjs';
 import { filmTranscript } from '../../studio/transcript.mjs';
 
@@ -62,23 +61,7 @@ export async function pgeApi(req, res, path, ctx) {
   if (!validSlug(slug)) return send(res, 400, { error: 'Invalid name.' });
   const sub = m[3] ?? '';
 
-  if (m[1] === 'briefs' && sub === 'refs' && req.method === 'GET') return send(res, 200, await listRefs(root, slug));
-  if (m[1] === 'briefs' && sub === 'refs' && req.method === 'POST') {
-    // Raw image bytes; the file name comes in ?name=. Same-origin only (a page can't upload into your briefs).
-    if (!sameOrigin(req.headers.origin)) return send(res, 403, { error: 'Cross-origin request refused.' });
-    const buf = await rawBody(req, REF_MAX);
-    if (!buf) return send(res, 413, { error: 'Over 15 MB.' });
-    const r = await addRef(root, slug, new URL(req.url, 'http://x').searchParams.get('name'), buf);
-    if (r.status === 201) console.log(`added reference ${BRIEFS}/${slug}.refs/${r.name}`);
-    return send(res, r.status, r);
-  }
-  const del = m[1] === 'briefs' && sub.match(/^refs\/([^/]+)$/);
-  if (del && req.method === 'DELETE') {
-    let name = null; try { name = decodeURIComponent(del[1]); } catch {}
-    const r = await removeRef(root, slug, name);
-    if (r.status === 200) console.log(`removed reference ${BRIEFS}/${slug}.refs/${name}`);
-    return send(res, r.status, r);
-  }
+  if (m[1] === 'briefs' && await refsRoute(req, res, { refs, root, slug, sub, send, readBody, sameOrigin, label: BRIEFS }) !== false) return;
   if (m[1] === 'briefs') {
     if (sub || req.method !== 'GET') return send(res, 404, { error: 'Unknown endpoint.' });
     const file = join(root, BRIEFS, `${slug}.md`);
@@ -120,28 +103,9 @@ export async function pgeApi(req, res, path, ctx) {
   return send(res, 404, { error: 'Unknown endpoint.' });
 }
 
-// Request body as bytes, up to cap (null when over: the rest is drained so the answer still arrives).
-function rawBody(req, cap) {
-  return new Promise((resolve, reject) => {
-    let size = 0; const chunks = [];
-    req.on('data', (c) => { size += c.length; if (size <= cap) chunks.push(c); });
-    req.on('end', () => resolve(size > cap ? null : Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
-
 // GET /pge-media/:slug/<path>.png → a rendered image (?download=1 to save it).
 // GET /pge-media/:slug/finals.zip[?format=<name>] → every final PNG (or one format's) in one zip.
 export async function pgeMedia(req, res, path, { root, send, validSlug }) {
-  const ref = path.match(/^\/pge-media\/([^/]+)\/_refs\/([^/]+)$/);
-  if (ref) {   // a design reference uploaded with the brief
-    let slug = null, name = null; try { slug = decodeURIComponent(ref[1]); name = decodeURIComponent(ref[2]); } catch {}
-    const file = validSlug(slug) ? refPath(root, slug, name) : null;
-    if (!file || req.method !== 'GET') return send(res, 404, 'Not found', 'text/plain');
-    const type = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }[name.split('.').pop()];
-    res.writeHead(200, { 'content-type': type, 'content-length': statSync(file).size, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
-    return createReadStream(file).on('error', () => res.destroy()).pipe(res);
-  }
   const z = path.match(/^\/pge-media\/([^/]+)\/finals\.zip$/);
   if (z) {
     let slug = null; try { slug = decodeURIComponent(z[1]); } catch {}

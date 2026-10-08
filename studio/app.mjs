@@ -270,19 +270,19 @@ async function viewBrief(slug, k = KINDS.film) {
     frames.append(el('li', {}, railLink(id, [el('span', { class: 'n' }, String(s.n)), el('span', { class: 'label', html: inline(s.title.replace(/\s*\(.*\)$/, '')) })])));
     frames.lastChild.firstChild.dataset.section = s.n;
   }
-  if (kind.name === 'image') {
-    // Image briefs take design references (uploaded images): the panel lives with the image engine.
-    const { refsPanel } = await import('./pge.mjs');
-    const ctx = { $, el, api, post, shell, fatal, escHtml, ago, agentPane, renderMarkdown, railLink, onLeave: (f) => cleanup.push(f) };
-    const refs = refsPanel(ctx, () => editing);
+  {
+    // Design references (images and clips, each with its own note), for both kinds of brief.
+    const { refsPanel } = await import('./refs-panel.mjs');
+    const refs = refsPanel({ el, api }, { base: kind.briefs, folder: kind.dir, getSlug: () => editing });
+    cleanup.push(refs.flush);
     page.append(refs.box); sections.push(refs.box);
     frames.append(el('li', {}, railLink('refs', [el('span', { class: 'n' }, '+'), el('span', { class: 'label' }, 'Design references')])));
     refreshRefs = refs.refresh;
-  } else refreshRefs = null;
+  }
   watchActive(sections);
   changed();
 }
-let refreshRefs = null;   // the image brief's references panel, re-checked once a new brief is first saved
+let refreshRefs = null;   // the brief's references panel, re-checked once a new brief is first saved
 
 // ── Editor status: lit frames, save target ──────────────────────
 const linesOf = (s) => s.blocks.flatMap((b) => (b.type === 'choice' ? b.options.map((o) => o.line) : b.line != null ? [b.line] : []));

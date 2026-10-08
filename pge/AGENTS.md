@@ -72,9 +72,11 @@ The root's look rules still apply where they make sense for a still, and are res
 
 ## The loop (before you show anything)
 1. Assets → `docs/style_guide.md` (palette in hex, faces, motif, texture, what to avoid).
-   **Design references:** if `assets/refs/` has images (uploaded with the brief), open every one and add a
-   "References" section to the style guide: per image, what you take (layout, type scale, palette, line quality,
-   density) and what you don't. Take the grammar, never the content: no tracing, no copied artwork, logos or text.
+   **Design references:** if `assets/refs/refs.md` exists, read it first: it lists every file uploaded with the brief, in
+   order, each with the client's note on what to take from it. A note applies to its own file only. Open every image;
+   a clip is shown as its `<name>.frames.png` sheet (left to right, then down). Add a "References" section to the style
+   guide: per file, what you take (following its note), and what you don't. No note: decide, and say why. Take the
+   grammar, never the content: no tracing, no copied artwork, logos or text.
 2. `docs/plan.md`: one section per panel (`## Panel N · name`: what it shows, its exact words, the motif's state,
    the hand-off to the next), the formats and why, every deviation from the brief, open questions.
    **Stop and wait for the human's OK in the studio** (Images → the job → Story plan). The approval is tied to the

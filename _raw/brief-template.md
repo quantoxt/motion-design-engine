@@ -206,6 +206,8 @@ Use the **motion-reel** skill. Go all out.
 
 **References (links, frames or video paths; the agent takes the grammar, never the content):** ____
 
+*Images and short clips can also be uploaded under **Design references** at the bottom of this form, each with a note saying what to take from it. They land in the film's `assets/refs/` with `refs.md`.*
+
 **Mood** *(pick up to 3)*
 - [ ] Confident
 - [ ] Calm

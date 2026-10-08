@@ -5,8 +5,7 @@ import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { addRef, removeRef, listRefs, refPath, imageType } from './jobs.mjs';
-import { scaffold, gates, planFile, approvePlan, revokePlan, mediaPath, briefs, jobs, jobSettings, images, finalFiles, attention } from './jobs.mjs';
+import { refs, scaffold, gates, planFile, approvePlan, revokePlan, mediaPath, briefs, jobs, jobSettings, images, finalFiles, attention } from './jobs.mjs';
 import { fingerprint } from '../lib/gate.mjs';
 
 const PGE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -123,27 +122,20 @@ test('attention: plan waiting/stale and failed image agents show on Home', async
   rmSync(r, { recursive: true, force: true });
 });
 
-test('design references: real images only, unique names, copied into the job and mirrored after', async () => {
+test('design references: kept with the brief, copied into the job with refs.md, kept in step after', async () => {
   const r = root();
   const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(20)]);
-  const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(20)]);
-  assert.equal(imageType(png), 'png'); assert.equal(imageType(jpg), 'jpg');
-  assert.equal(imageType(Buffer.from('<svg onload=alert(1)>')), null);
-  assert.equal((await addRef(r, 'x', 'a.png', png)).status, 404, 'brief must be saved first');
+  assert.equal((await refs.add(r, 'x', 'a.png', png)).status, 404, 'brief must be saved first');
   writeFileSync(join(r, 'pge', 'briefs', 'x.md'), brief('X'));
-  assert.equal((await addRef(r, 'x', 'evil.html', Buffer.from('<html>'))).status, 415);
-  assert.equal((await addRef(r, 'x', 'My Moodboard!.PNG', png)).name, 'my-moodboard.png');
-  assert.equal((await addRef(r, 'x', 'my moodboard.png', png)).name, 'my-moodboard-2.png');
-  assert.equal((await addRef(r, 'x', 'photo.png', jpg)).name, 'photo.jpg', 'extension follows the real type');
-  assert.deepEqual((await listRefs(r, 'x')).map((f) => f.name), ['my-moodboard-2.png', 'my-moodboard.png', 'photo.jpg']);
-  assert.equal(refPath(r, 'x', '../x.md'), null);
+  assert.equal((await refs.add(r, 'x', 'photo.png', png)).name, 'photo.png');
+  await refs.setNote(r, 'x', 'photo.png', 'the cropped headline');
   await scaffold(r, 'x');
-  const refs = join(r, 'pge', 'jobs', 'x', 'assets', 'refs');
-  assert.ok(existsSync(join(refs, 'photo.jpg')), 'copied into the job at start');
-  assert.equal((await addRef(r, 'x', 'late.png', png)).status, 201);
-  assert.ok(existsSync(join(refs, 'late.png')), 'mirrored once the job exists');
-  assert.equal((await removeRef(r, 'x', 'late.png')).status, 200);
-  assert.ok(!existsSync(join(refs, 'late.png')));
-  assert.equal((await removeRef(r, 'x', '../../x.md')).status, 400);
+  const dest = join(r, 'pge', 'jobs', 'x', 'assets', 'refs');
+  assert.ok(existsSync(join(dest, 'photo.png')), 'copied into the job at start');
+  assert.match(readFileSync(join(dest, 'refs.md'), 'utf8'), /## 1 · photo\.png\nImage\.\n\*\*Take from it:\*\* the cropped headline/);
+  assert.equal((await refs.add(r, 'x', 'late.png', png)).status, 201);
+  assert.ok(existsSync(join(dest, 'late.png')), 'mirrored once the job exists');
+  assert.equal((await refs.remove(r, 'x', 'late.png')).status, 200);
+  assert.ok(!existsSync(join(dest, 'late.png')));
   rmSync(r, { recursive: true, force: true });
 });

@@ -36,13 +36,6 @@ const STYLE = `
 .pge-view .dots { position: absolute; bottom: 22px; left: 0; right: 0; display: flex; gap: 8px; justify-content: center; }
 .pge-view .dots i { width: 8px; height: 8px; border-radius: 50%; background: #4A5366; }
 .pge-view .dots i.on { background: #E3E7EE; }
-.pge-drop { margin-top: 14px; padding: 28px 20px; border: 2px dashed var(--rule); border-radius: 4px; text-align: center; color: var(--soft); cursor: pointer; }
-.pge-drop b { color: var(--ink); }
-.pge-drop:hover, .pge-drop:focus-visible, .pge-drop.over { border-color: var(--accent); color: var(--ink); outline: none; }
-.pge-drop.off { cursor: not-allowed; opacity: 0.6; }
-.pge-ref-status { color: var(--soft); min-height: 1.4em; }
-.pge-refs img { aspect-ratio: 1; object-fit: cover; }
-.pge-x { padding: 1px 8px; font-size: 0.8rem; }
 `;
 const STATE_LABEL = { done: 'Done', current: 'Up next', todo: 'Not started' };
 const APPROVAL_LABEL = { waiting: 'Needs your OK', stale: 'Changed, needs your OK' };
@@ -264,65 +257,4 @@ function viewer(ctx, slug, items, start, v, label) {
   dialog.showModal();
   go(i);
   next.disabled ? prev.focus() : next.focus();
-}
-
-// ═══ Image brief: design references ═══════════════════════════════
-// A panel under the brief form: drop or pick images; they're saved with the brief (pge/briefs/<job>.refs/) and land in the
-// job's assets/refs/ for the agent. getSlug() = the saved brief's name (null until the brief is saved once).
-export function refsPanel(ctx, getSlug) {
-  const { el, api, ago } = ctx;
-  style(ctx);
-  const input = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true, hidden: true,
-    onchange: () => { upload([...input.files]); input.value = ''; } });
-  const status = el('p', { class: 'pge-ref-status', role: 'status' });
-  const grid = el('ul', { class: 'pge-grid pge-refs' });
-  const drop = el('div', { class: 'pge-drop', tabindex: '0', role: 'button', 'aria-label': 'Add reference images',
-    onclick: () => getSlug() && input.click(),
-    onkeydown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && getSlug()) { e.preventDefault(); input.click(); } },
-    ondragover: (e) => { e.preventDefault(); drop.classList.add('over'); },
-    ondragleave: () => drop.classList.remove('over'),
-    ondrop: (e) => { e.preventDefault(); drop.classList.remove('over'); upload([...e.dataTransfer.files]); },
-  }, [el('b', {}, 'Drop images here'), el('span', {}, ' or click to choose. PNG, JPG, GIF or WebP, up to 15 MB each.')]);
-  const box = el('section', { id: 'refs', 'aria-labelledby': 'refs-h' }, [
-    el('header', {}, [el('span', { class: 'n', 'aria-hidden': 'true' }, '+'), el('h3', { id: 'refs-h' }, 'Design references')]),
-    el('p', { class: 'note' }, 'Images whose look you want: layouts, type, colour, drawing style. The agent studies them and writes what it takes in the style guide. It takes the grammar, never the content.'),
-    drop, input, status, grid,
-  ]);
-
-  async function upload(files) {
-    const slug = getSlug();
-    if (!slug) { status.textContent = 'Save the brief first, then add references.'; return; }
-    let ok = 0;
-    for (const [k, f] of files.entries()) {
-      status.textContent = `Uploading ${k + 1} of ${files.length}: ${f.name}…`;
-      const res = await fetch(`/api/pge/briefs/${enc(slug)}/refs?name=${enc(f.name)}`, { method: 'POST', headers: { 'content-type': f.type || 'application/octet-stream' }, body: f });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) { status.textContent = `${f.name}: ${body.error || `upload failed (${res.status})`}`; await load(); return; }
-      ok++;
-    }
-    status.textContent = ok ? `Added ${ok} reference${ok === 1 ? '' : 's'}.` : '';
-    await load();
-  }
-  async function remove(name) {
-    if (!confirm(`Remove ${name}?`)) return;
-    await fetch(`/api/pge/briefs/${enc(getSlug())}/refs/${enc(name)}`, { method: 'DELETE' });
-    await load();
-  }
-  async function load() {
-    const slug = getSlug();
-    drop.classList.toggle('off', !slug);
-    grid.textContent = '';
-    if (!slug) { status.textContent = 'Save the brief first (name the job), then add references here.'; return; }
-    const { res, body } = await api(`/api/pge/briefs/${enc(slug)}/refs`);
-    if (!res.ok) return;
-    if (!status.textContent || status.textContent.startsWith('Save the brief')) status.textContent = body.length ? `${body.length} reference${body.length === 1 ? '' : 's'}, saved in pge/briefs/${slug}.refs/` : '';
-    for (const r of body) grid.append(el('li', {}, [
-      el('a', { href: `/pge-media/${enc(slug)}/_refs/${enc(r.name)}`, target: '_blank', rel: 'noopener' },
-        el('img', { src: `/pge-media/${enc(slug)}/_refs/${enc(r.name)}`, alt: r.name, loading: 'lazy' })),
-      el('span', {}, [`${r.name} · ${Math.max(1, Math.round(r.size / 1024))} KB `,
-        el('button', { type: 'button', class: 'quiet pge-x', 'aria-label': `Remove ${r.name}`, onclick: () => remove(r.name) }, 'Remove')]),
-    ]));
-  }
-  load();
-  return { box, refresh: load };
 }

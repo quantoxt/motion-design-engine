@@ -106,7 +106,7 @@ Read `pge/AGENTS.md` first: it is the rulebook for image jobs.
 
 **References (links or image paths; the agent takes the grammar, never the content):** ____
 
-*Images can also be uploaded under **Design references** at the bottom of this form; they land in the job's `assets/refs/`.*
+*Images and short clips can also be uploaded under **Design references** at the bottom of this form, each with a note saying what to take from it. They land in the job's `assets/refs/` with `refs.md`.*
 
 **Avoid:** ____
 

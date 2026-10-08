@@ -6,7 +6,8 @@ renders it frame by frame to MP4 with synthesized music and SFX, loudness-normal
 
 A local web UI, the **studio**, runs the whole flow: write a brief → start a film → run the
 agent in a terminal in the browser → approve its shotlist → watch the finished films in the
-Library.
+Library. Briefs take **design references**: images and short clips, each with a note saying what to
+take from it. Its **Images** section does the same for stills, posters and carousels (`pge/README.md`).
 
 ## Requirements
 
@@ -72,6 +73,7 @@ node render-parallel.mjs --dir brands/<brand> --all-formats   # full render, eve
 node render-parallel.mjs --dir brands/<brand> --all-formats --formats vertical   # only the named formats
 node shots.mjs beats --dir brands/<brand>                     # critique stills
 node shots.mjs events --dir brands/<brand> --format all       # clicks, swaps, transforms, every format
+node shots.mjs contact --dir brands/<brand>                   # one still per bar → out/contact.png
 node render-parallel.mjs --dir brands/<brand> --scan          # ~3 min input for holds.mjs
 node holds.mjs --dir brands/<brand>                           # one-frame pops + dead holds (+ out/pops.png)
 node render-parallel.mjs --dir brands/<brand> --scan --from 12 --dur 2   # check one fix fast
@@ -87,6 +89,7 @@ Always pass `--dir`: without it, scripts work on the current folder. Finished fi
 
 ```
 AGENTS.md               rules every film follows (render contract, look, motion, sound, critique loop)
+pge/                    the image engine (stills, posters, carousels): see pge/README.md
 studio.mjs, studio/     the web UI and its server (local only: binds 127.0.0.1)
 render*.mjs, shots.mjs, finalize.mjs, sfx.mjs, beats.py, lib/   the engine, shared by all films
 brands/_template/       scaffold for a new film

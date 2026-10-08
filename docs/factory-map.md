@@ -36,6 +36,10 @@ MOTION DESIGN/
                             # run page: Resume (terminal/history), version links, Shift+Enter newline
     library.mjs             # Library: finished films per brand, versions folded in (finalize's naming), ffprobe metadata,
                             # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4, silent_*.mp4)
+    refs.mjs                # design references for both brief kinds: images + clips in <briefs>/<slug>.refs/, notes in
+                            # refs.json (upload order, keyed by file name, writes serialized per brief), clips → <name>.frames.png
+                            # (ffmpeg, 6–24 frames), job copies in assets/refs/ + refs.md; refsRoute = the HTTP side
+    refs-panel.mjs          # the brief form's "Design references" panel: upload, one note per file (saved by name), remove
     md.mjs                  # markdown → HTML (escaped) for the shotlist panel
     transcript.mjs          # readable agent transcript: Claude sessions from ~/.claude/projects/<cwd>/<id>.jsonl, else terminal.log
     brief.mjs               # template ⇄ form model: parse / serialize / readBack / filmSettings (shared with tests)
@@ -43,7 +47,8 @@ MOTION DESIGN/
                             # shotlist + primary-render approvals → brands/<slug>/docs/approvals.json (sha256 of the
                             # approved text; the render's size+mtime and the film fingerprint),
                             # brief drift + sync (_raw/ → docs/brief.md), "needs you" items for Home,
-                            # versions: brands/<brand>-vN/ via makeVersion (seeded from the last version)
+                            # versions: brands/<brand>-vN/ via makeVersion (seeded from the last version),
+                            # design references (_raw/<brand>.refs/ → assets/refs/ of every version not yet delivered)
     terminal.mjs            # agent sessions: one node-pty PTY per film, scrollback replay,
                             # transcript → brands/<slug>/out/terminal.log (1 MB cap), session history +
                             # resume ids (Claude --session-id, OpenCode found by first message) → out/agent-sessions.json.
@@ -68,7 +73,7 @@ MOTION DESIGN/
     render.mjs              # node pge/render.mjs --dir pge/jobs/<job> [--draft] [--format f] [--panel N]
     studio/api.mjs          # /api/pge/…, /pge-media/… routes incl. finals.zip (mounted by studio.mjs)
     studio/jobs.mjs         # briefs, scaffold, 7 gates, story-plan approval, image lists (by format), media allowlist,
-                            # design references (pge/briefs/<job>.refs/ → job assets/refs/),
+                            # design references (studio/refs.mjs: pge/briefs/<job>.refs/ → job assets/refs/),
                             # Home attention items (merged into /api/dashboard)
     studio/view.mjs         # Images views (served as /pge.mjs, loaded by studio/app.mjs) + full-screen set viewer
     *.test.mjs              # part of npm test
@@ -107,6 +112,7 @@ MOTION DESIGN/
   _raw/
     brief-template.md       # interactive checklist — ALSO generates the studio form;
                             # copy → _raw/<brand>.md, fill blanks, hand to agent
+    <brand>.refs/           # design references uploaded with the brief (gitignored with the rest of _raw/)
     quantoxt-inc-solo.md    # worked example (first film's brief) — filled briefs are gitignored
   brands/
     _template/              # new-film scaffold: index.html starter, film.json,

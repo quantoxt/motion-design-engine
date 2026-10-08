@@ -11,6 +11,13 @@ changes them. Films keep rendering while image jobs run.
 Images (sidebar) → **New image brief** → fill it in → **Start images** → **Run agent**. The job page shows the gates;
 approve the story plan when the agent asks, then wait for the finals and the phone-size contact sheet.
 
+- **Design references:** upload images (PNG, JPEG, GIF, WebP, 15 MB) or clips (MP4, MOV, WebM, 100 MB) at the bottom
+  of the brief form, 40 per brief, each with a note saying what to take from it. Stored in `pge/briefs/<job>.refs/`
+  (notes in `refs.json`, keyed by file name), copied to the job's `assets/refs/` with `refs.md`. Clips become a sheet
+  of frames. Shared with film briefs: `studio/refs.mjs`.
+- **Viewing:** click any image for the full-screen viewer (← / → or swipe, D downloads, Esc closes).
+- **Downloading:** **Download all (zip)** on the job page or the Images list, or one zip per format.
+
 ## Use it by hand
 ```
 node pge/render.mjs --dir pge/jobs/<job> --draft     # drafts + out/draft/contact_<format>.png

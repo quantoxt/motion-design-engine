@@ -5,6 +5,7 @@
 //   GET  /api/template     _raw/brief-template.md (the form is generated from it)
 //   GET  /api/briefs       saved briefs in _raw/ (+ whether a film exists for each)
 //   GET  /api/briefs/:slug one brief's markdown (to reopen and edit)
+//   GET|POST /api/briefs/:slug/refs, GET|PUT|DELETE …/refs/:name  design references and their notes (studio/refs.mjs)
 //   POST /api/briefs       { slug, md, overwrite? } → writes _raw/<slug>.md (409 if it exists)
 //   POST /api/films        { slug } → scaffolds brands/<slug>/ from brands/_template (409 if it exists)
 //   GET  /api/films/:slug  gate status, read from the files in brands/<slug>/, + brief drift vs _raw/ + version info
@@ -43,7 +44,8 @@ import { createRequire } from 'node:module';
 import { WebSocketServer } from 'ws';
 import { SLUG, briefTitle } from './studio/brief.mjs';
 import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, approvePrimary, revokePrimary, films, briefDrift, syncBrief, attention,
-  makeVersion, versionInfo, versions, splitVersion } from './studio/films.mjs';
+  makeVersion, versionInfo, versions, splitVersion, refs } from './studio/films.mjs';
+import { refsRoute } from './studio/refs.mjs';
 import { createTerminals } from './studio/terminal.mjs';
 import { library, brand, mediaFile } from './studio/library.mjs';
 import { filmTranscript } from './studio/transcript.mjs';
@@ -58,7 +60,7 @@ const MAX_BODY = 256 * 1024;
 const argv = process.argv.slice(2);
 const PORT = Number(argv[argv.indexOf('--port') + 1]) || 4321;
 // Only the UI files are served; nothing else in studio/ (tests, notes) is reachable.
-const PUBLIC = { 'index.html': 'text/html; charset=utf-8', 'app.mjs': 'text/javascript', 'brief.mjs': 'text/javascript', 'md.mjs': 'text/javascript',
+const PUBLIC = { 'index.html': 'text/html; charset=utf-8', 'app.mjs': 'text/javascript', 'brief.mjs': 'text/javascript', 'md.mjs': 'text/javascript', 'refs-panel.mjs': 'text/javascript',
   'fonts/bricolage-latin.woff2': 'font/woff2', 'fonts/bricolage-latin-ext.woff2': 'font/woff2' };
 // The Images section's view lives with the image engine.
 const PGE_VIEW = join(ROOT, 'pge', 'studio', 'view.mjs');
@@ -134,6 +136,15 @@ async function api(req, res, path) {
     if (!validSlug(slug)) return send(res, 400, { error: 'Invalid name.' });
     const b = await brand(ROOT, slug);
     return b ? send(res, 200, b) : send(res, 404, { error: `No finished films for ${slug} yet.` });
+  }
+
+  // Design references uploaded with a film brief (studio/refs.mjs).
+  const ref = path.match(/^\/api\/briefs\/([^/]+)\/(refs(?:\/[^/]+)?)$/);
+  if (ref) {
+    let slug = null;
+    try { slug = decodeURIComponent(ref[1]); } catch {}
+    if (!validSlug(slug)) return send(res, 400, { error: 'Invalid name.' });
+    return refsRoute(req, res, { refs, root: ROOT, slug, sub: ref[2], send, readBody, sameOrigin, label: '_raw' });
   }
 
   const one = path.match(/^\/api\/(briefs|films)\/([^/]+)$/);

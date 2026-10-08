@@ -7,6 +7,18 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-08
 
+### Design references for films too, with a note per file and video clips
+- Shared `studio/refs.mjs` + `studio/refs-panel.mjs`: both brief forms (film and image) have the **Design references**
+  panel. Images (≤15 MB) and clips (MP4/MOV/WebM, ≤100 MB), 40 per brief, type read from the first bytes.
+- Each file has its own note ("what to take from it"), saved by file name in `<briefs>/<slug>.refs/refs.json`, in upload
+  order. Writes to one brief are serialized, so notes saved at the same time can't overwrite each other; removing a file
+  removes its note.
+- A clip becomes `<name>.frames.png` (6–24 frames, ~2 per second, two-pass ffmpeg so the stated count matches the sheet).
+- Job folders get `assets/refs/` + `refs.md` (each file, in order, with its note). Films: copied at Start film and into
+  new versions, kept in step for versions still in production; a delivered film is never touched.
+- Rules: root `AGENTS.md` "Design references", `pge/AGENTS.md` loop step 1. Templates point at the panel.
+- Image briefs' old image-only panel and `/pge-media/<job>/_refs/` replaced by the shared routes.
+
 ### Images: design references
 - The image brief editor has a **Design references** panel: drop or pick images (PNG/JPG/GIF/WebP, ≤15 MB, ≤40). Saved with
   the brief in `pge/briefs/<job>.refs/`, copied to the job's `assets/refs/` at start and mirrored after. Type checked by

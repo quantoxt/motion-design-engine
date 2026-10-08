@@ -6,6 +6,7 @@ import { join, normalize } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse, readBack, briefTitle } from '../../studio/brief.mjs';
 import { readResult } from '../lib/gate.mjs';
+import { createRefs } from '../../studio/refs.mjs';
 
 export const BRIEFS = 'pge/briefs', JOBS = 'pge/jobs';
 const mtime = async (p) => { try { return (await stat(p)).mtime.toISOString(); } catch { return null; } };
@@ -85,7 +86,7 @@ export async function scaffold(root, slug) {
   await cp(join(root, 'pge', '_template'), dest, { recursive: true });
   const md = await readFile(brief, 'utf8');
   await writeFile(join(dest, 'docs', 'brief.md'), md);
-  if (existsSync(refsDir(root, slug))) await cp(refsDir(root, slug), join(dest, 'assets', 'refs'), { recursive: true });   // design references
+  await refs.copyInto(root, slug, dest);   // design references + refs.md
   const job = JSON.parse(await readFile(join(dest, 'job.json'), 'utf8'));
   Object.assign(job, jobSettings(md));
   await writeFile(join(dest, 'job.json'), JSON.stringify(job, null, 2) + '\n');
@@ -187,55 +188,7 @@ export async function revokePlan(root, slug) {
   return { status: 200 };
 }
 
-// ── Design references: images uploaded with an image brief, for the agent to study (never to copy) ──
-// Stored next to the brief in pge/briefs/<slug>.refs/, copied into the job's assets/refs/ when the job starts,
-// and mirrored there on upload/delete once the job exists. Only real images (checked by their first bytes).
-export const REF_MAX = 15 * 1024 * 1024, REF_COUNT = 40;
-const REF_TYPES = { png: [0x89, 0x50, 0x4e, 0x47], jpg: [0xff, 0xd8, 0xff], gif: [0x47, 0x49, 0x46, 0x38] };
-export function imageType(buf) {
-  for (const [ext, sig] of Object.entries(REF_TYPES)) if (sig.every((b, i) => buf[i] === b)) return ext;
-  if (buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp';
-  return null;
-}
-export const refsDir = (root, slug) => join(root, BRIEFS, `${slug}.refs`);
-const jobRefs = (root, slug) => join(jobDir(root, slug), 'assets', 'refs');
-const REF_NAME = /^[a-z0-9][a-z0-9._-]{0,80}\.(png|jpg|gif|webp)$/;
-
-export async function listRefs(root, slug) {
-  let names = [];
-  try { names = (await readdir(refsDir(root, slug))).filter((f) => REF_NAME.test(f)).sort(); } catch {}
-  return Promise.all(names.map(async (name) => ({ name, size: (await stat(join(refsDir(root, slug), name))).size })));
-}
-
-// Save one uploaded image. name = the original file name (cleaned up; the extension follows the real type).
-export async function addRef(root, slug, name, buf) {
-  if (!existsSync(join(root, BRIEFS, `${slug}.md`))) return { status: 404, error: 'Save the brief first, then add references.' };
-  if (!buf.length) return { status: 400, error: 'Empty file.' };
-  if (buf.length > REF_MAX) return { status: 413, error: 'Over 15 MB.' };
-  const ext = imageType(buf);
-  if (!ext) return { status: 415, error: 'Only PNG, JPG, GIF or WebP images.' };
-  const have = await listRefs(root, slug);
-  if (have.length >= REF_COUNT) return { status: 409, error: `${REF_COUNT} references at most.` };
-  const stem = String(name ?? '').toLowerCase().replace(/\.[^.]*$/, '').normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'ref';
-  let file = `${stem}.${ext}`;
-  for (let k = 2; have.some((r) => r.name === file); k++) file = `${stem}-${k}.${ext}`;
-  await mkdir(refsDir(root, slug), { recursive: true });
-  await writeFile(join(refsDir(root, slug), file), buf);
-  if (existsSync(jobDir(root, slug))) { await mkdir(jobRefs(root, slug), { recursive: true }); await writeFile(join(jobRefs(root, slug), file), buf); }
-  return { status: 201, name: file };
-}
-
-export async function removeRef(root, slug, name) {
-  if (!REF_NAME.test(name ?? '')) return { status: 400, error: 'Invalid name.' };
-  const file = join(refsDir(root, slug), name);
-  if (!existsSync(file)) return { status: 404, error: 'No such reference.' };
-  await rm(file);
-  await rm(join(jobRefs(root, slug), name), { force: true });
-  return { status: 200 };
-}
-
-export function refPath(root, slug, name) {
-  if (!REF_NAME.test(name ?? '')) return null;
-  const file = join(refsDir(root, slug), name);
-  return existsSync(file) ? file : null;
-}
+// ── Design references: images and clips uploaded with an image brief (studio/refs.mjs, shared with films) ──
+// Stored next to the brief in pge/briefs/<slug>.refs/, copied into the job's assets/refs/ (with refs.md) when the
+// job starts, and kept in step there on every change once the job exists.
+export const refs = createRefs({ briefs: BRIEFS, targets: async (root, slug) => (existsSync(jobDir(root, slug)) ? [jobDir(root, slug)] : []) });

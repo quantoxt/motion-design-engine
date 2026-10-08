@@ -128,6 +128,15 @@
 - You cannot hear the result. Say so and ask a human to listen; "sound sync" here
   is measured, never auditioned.
 
+## Design references
+- If `assets/refs/refs.md` exists, read it before the style guide. It lists every image and clip uploaded with the brief,
+  in order, each with the client's note on what to take from it. A note applies to its own file only.
+- You can't watch a clip: open its `<name>.frames.png` (frames left to right, then down, spacing given in refs.md). Read
+  the motion from the sequence: cut rhythm, how objects enter and leave, camera moves, how type changes.
+- Write a "References" section in `docs/style_guide.md`: per file, what you take (following its note) and what you don't.
+  No note: decide, and say why. Take the grammar (layout, type, colour, texture, motion, pacing), never the content:
+  no tracing, no copied artwork, logos, footage or text.
+
 ## Lessons
 - Before planning, read `brands/<name>/docs/lessons.md` if it exists (a new version inherits the
   previous one's) and don't repeat its mistakes.
