@@ -24,7 +24,7 @@ MOTION DESIGN/
     gate.mjs                # check results + film fingerprint; primary-render review state; what blocks a full render
     package.json            # {"type":"module"}: Node reads lib/*.js as ES modules (tests); browsers ignore it
     *.test.mjs              # holds, layout/cursor/checks, type/hinge (part of `npm test`)
-  opencode.json             # OpenCode in this folder: film agents' model + variant "high" (Claude's --effort high is in studio/terminal.mjs)
+  opencode.json             # OpenCode in this folder: film agents' model + variant "high" (Claude's --effort medium is in studio/terminal.mjs)
   package.json              # deps (node-pty, ws, xterm, playwright), `npm run studio`, `npm test`; Node >= 20
   studio.mjs                # web UI server: `npm run studio` → 127.0.0.1:4321. Briefs → _raw/<slug>.md, Start film,
                             # gates + approvals, agent terminals (websocket), Library media. Endpoint list in its header
@@ -32,6 +32,7 @@ MOTION DESIGN/
     index.html, app.mjs     # UI: Home (#/: needs you, running, recent, briefs; navbar badge + alerts),
                             # brief editor (#/brief/<slug>), film gates (#/film/<slug>), agent terminal (#/run/<slug>),
                             # Agents (#/agents), Film Library (#/library, #/library/<slug>)
+                            # Images (#/images, #/images/<job>, #/images/brief/<job>): see pge/
                             # run page: Resume (terminal/history), version links, Shift+Enter newline
     library.mjs             # Library: finished films per brand, versions folded in (finalize's naming), ffprobe metadata,
                             # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4, silent_*.mp4)
@@ -48,16 +49,36 @@ MOTION DESIGN/
                             # resume ids (Claude --session-id, OpenCode found by first message) → out/agent-sessions.json.
                             # Spec: docs/terminal-spec.md
     fonts/                  # Bricolage Grotesque woff2 + OFL (bundled, works offline)
-    *.test.mjs              # `npm test` (46 with lib/*.test.mjs): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
+    *.test.mjs              # `npm test` (76 with lib/ and pge/ tests): parser, reopen, film.json mapping, scaffold, gates, drift/attention,
                             # terminal sessions + resume (fake PTY / fake OpenCode), library + media allowlist,
                             # Machine checks + Primary render gates (fresh/stale/legacy/skip) (no browser)
+  pge/                      # IMAGE ENGINE (stills that tell a story), isolated from the films. Rules: pge/AGENTS.md
+    README.md               # what it is, how to run it
+    brief-template.md       # image brief (the studio's Images editor is generated from it)
+    briefs/<job>.md         # saved image briefs (gitignored)
+    _template/              # new job scaffold: index.html (panels), job.json (kind, formats, allow), docs/, out/
+    jobs/<job>/             # one image job (gitignored): docs/ brief, style_guide, plan (+ approvals.json), review_log,
+                            # lessons; out/ draft/, final/, contact*.png, check.json, terminal.log, agent-sessions.json
+    lib/still.js            # createStill(): canvas + design units + anchors; S.panels() (window.paint/PANELS); S.text, paragraph
+    lib/checks.mjs          # per-panel checks (pure): film geometry + phone-size, contrast, empty
+    lib/gate.mjs            # out/check.json fingerprint (index.html + job.json)
+    lib/zip.mjs             # stored zip writer (finals download), no dependency
+    lib/page.mjs            # headless page for check/render (serves the job, engine root as fallback)
+    check.mjs               # node pge/check.mjs --dir pge/jobs/<job> → out/check.json (gate for finals)
+    render.mjs              # node pge/render.mjs --dir pge/jobs/<job> [--draft] [--format f] [--panel N]
+    studio/api.mjs          # /api/pge/…, /pge-media/… routes incl. finals.zip (mounted by studio.mjs)
+    studio/jobs.mjs         # briefs, scaffold, 7 gates, story-plan approval, image lists (by format), media allowlist,
+                            # design references (pge/briefs/<job>.refs/ → job assets/refs/),
+                            # Home attention items (merged into /api/dashboard)
+    studio/view.mjs         # Images views (served as /pge.mjs, loaded by studio/app.mjs) + full-screen set viewer
+    *.test.mjs              # part of npm test
   render.mjs                # serial reference renderer (reads film.json, ?w&h override)
   render-parallel.mjs       # DEFAULT renderer: parallel workers, byte-identical output
                             # --animatic (cheap pacing draft), --scan (half size, full fps, no blur, one keyframe
                             # → out/scan.mp4 for holds.mjs; with --from/--dur → scan_<from>-<to>.mp4), --all-formats (film.json; --formats a,b to pick;
                             # drafts land as animatic_<f>/scan_<f>.mp4, never silent_<f>.mp4),
                             # --workers N, --crf N, --from S, --out FILE
-  shots.mjs                 # critique stills: beats (from film's beat grid) / strip / at / events
+  shots.mjs                 # critique stills: beats (from film's beat grid) / strip / at / events / contact (1 still per bar → contact.png)
                             # (window.EVENTS stills + 0.15s rows for window.TRANSFORMS and every window.SCENES
                             # handoff); --format <name>|all
   check.mjs                 # geometry gate: clicks in targets at rest, no overflow, no text collisions, nothing cut by the

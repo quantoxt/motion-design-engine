@@ -94,9 +94,9 @@ export const slugify = (s) => String(s ?? '').toLowerCase().normalize('NFKD').re
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
-// File name for the saved brief: the brand-folder field, else the brand name in the title.
+// File name for the saved brief: the brand-folder (or image job folder) field, else the name in the title.
 export function slugFor(model, state) {
-  const folder = model.lines.findIndex((l) => l.includes('brands/' + BLANK));
+  const folder = model.lines.findIndex((l) => l.includes('brands/' + BLANK) || l.includes('pge/jobs/' + BLANK));   // film or image job
   const fromFolder = folder >= 0 ? state.inputs?.[folder]?.[0] : '';
   const fromTitle = model.head.title ? state.inputs?.[model.head.title.line]?.[0] : '';
   return slugify(fromFolder) || slugify(fromTitle);
@@ -158,4 +158,4 @@ export function filmSettings(model, state) {
   return out;
 }
 
-export const briefTitle = (md) => md.match(/^# Brief:\s*(.*?)\s*(?:\(brand name\))?\s*$/m)?.[1]?.replace(/^_+$/, '') || '';
+export const briefTitle = (md) => md.match(/^# Brief:\s*(.*?)\s*(?:\((?:brand|job) name\))?\s*$/m)?.[1]?.replace(/^_+$/, '') || '';

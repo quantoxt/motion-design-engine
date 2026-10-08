@@ -27,10 +27,12 @@
 //   GET  /api/library/:slug  one brand's finished films with size, duration, fps
 //   GET  /media/:slug/:file  a final, poster.png, contact.png, animatic.mp4 or a silent_*.mp4 render from brands/<slug>/out/ (Range for seeking; ?download=1 to save)
 //   WS     /api/films/:slug/terminal/ws  live output out; { t:'i', d } input and { t:'r', cols, rows } resize in
+//   /api/pge/…, /pge-media/…              image jobs (the Images section): see pge/studio/api.mjs
 //
 // Local only: binds 127.0.0.1, answers only its own Host, writes need a same-origin Origin.
 // Writes: _raw/<slug>.md, brands/<slug>/ (scaffold, docs/brief.md sync, docs/approvals.json,
-// out/terminal.log, out/agent-sessions.json), brands/<brand>-vN/ (new version). Slugs are validated; nothing else is written.
+// out/terminal.log, out/agent-sessions.json), brands/<brand>-vN/ (new version),
+// pge/briefs/<slug>.md and pge/jobs/<slug>/ (image jobs). Slugs are validated; nothing else is written.
 import { createServer } from 'node:http';
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
 import { existsSync, createReadStream, readFileSync } from 'node:fs';
@@ -45,6 +47,8 @@ import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, approvePrim
 import { createTerminals } from './studio/terminal.mjs';
 import { library, brand, mediaFile } from './studio/library.mjs';
 import { filmTranscript } from './studio/transcript.mjs';
+import { pgeApi, pgeMedia } from './pge/studio/api.mjs';
+import { attention as pgeAttention } from './pge/studio/jobs.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const RAW = join(ROOT, '_raw'), TEMPLATE = join(RAW, 'brief-template.md'), UI = join(ROOT, 'studio');
@@ -56,6 +60,8 @@ const PORT = Number(argv[argv.indexOf('--port') + 1]) || 4321;
 // Only the UI files are served; nothing else in studio/ (tests, notes) is reachable.
 const PUBLIC = { 'index.html': 'text/html; charset=utf-8', 'app.mjs': 'text/javascript', 'brief.mjs': 'text/javascript', 'md.mjs': 'text/javascript',
   'fonts/bricolage-latin.woff2': 'font/woff2', 'fonts/bricolage-latin-ext.woff2': 'font/woff2' };
+// The Images section's view lives with the image engine.
+const PGE_VIEW = join(ROOT, 'pge', 'studio', 'view.mjs');
 // The terminal pane's browser libraries, served straight from node_modules.
 const VENDOR = {
   'vendor/xterm.mjs': ['@xterm/xterm/lib/xterm.mjs', 'text/javascript'],
@@ -64,10 +70,11 @@ const VENDOR = {
 };
 
 // node-pty is native; if it isn't built, the rest of the studio still runs and the terminal says why.
-let terminals = null, ptyError = null;
+let terminals = null, pgeTerminals = null, ptyError = null;
 try {
   const { spawn: ptySpawn } = createRequire(import.meta.url)('node-pty');
   terminals = createTerminals({ root: ROOT, spawn: ptySpawn });
+  pgeTerminals = createTerminals({ root: ROOT, spawn: ptySpawn, base: 'pge/jobs' });   // image jobs
 } catch (err) {
   ptyError = 'The terminal needs node-pty built: run `npm install-scripts approve node-pty && npm rebuild node-pty`, then restart the studio.';
   console.warn(`terminal disabled: ${err.message.split('\n')[0]}`);
@@ -88,6 +95,8 @@ function readBody(req) {
 }
 
 async function api(req, res, path) {
+  if (path.startsWith('/api/pge/'))
+    return pgeApi(req, res, path, { root: ROOT, send, readBody, sameOrigin, validSlug, terminals: pgeTerminals, ptyError, plainLog });
   if (path === '/api/template' && req.method === 'GET') return send(res, 200, await readFile(TEMPLATE, 'utf8'), 'text/markdown; charset=utf-8');
 
   if (path === '/api/briefs' && req.method === 'GET') {
@@ -108,7 +117,10 @@ async function api(req, res, path) {
   const history = (slug) => terminals?.history(slug) ?? [];
   if (path === '/api/dashboard' && req.method === 'GET') {
     const lib = await library(ROOT);
-    return send(res, 200, { needs: await attention(ROOT, history), running: terminals?.live() ?? [],
+    // Image jobs (pge/) share Home: their plan OKs and failed agents, marked image: true so the UI links to #/images/<job>.
+    const pgeHistory = (slug) => pgeTerminals?.history(slug) ?? [];
+    return send(res, 200, { needs: [...await attention(ROOT, history), ...await pgeAttention(ROOT, pgeHistory)],
+      running: [...terminals?.live() ?? [], ...(pgeTerminals?.live() ?? []).map((r) => ({ ...r, image: true }))],
       finished: lib.slice(0, 4).map((b) => ({ slug: b.slug, title: b.title, cover: b.cover, count: b.count, versions: b.versions.length, updated: b.updated })),
       terminal: terminals ? null : ptyError });
   }
@@ -294,6 +306,8 @@ const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     if (path.startsWith('/api/')) return await api(req, res, path);
     if (path.startsWith('/media/')) return await media(req, res, path);
+    if (path.startsWith('/pge-media/')) return await pgeMedia(req, res, path, { root: ROOT, send, validSlug });
+    if (path === '/pge.mjs') return send(res, 200, await readFile(PGE_VIEW), 'text/javascript');
     const file = path === '/' ? 'index.html' : path.slice(1);
     if (Object.hasOwn(VENDOR, file)) return send(res, 200, await readFile(join(ROOT, 'node_modules', VENDOR[file][0])), VENDOR[file][1]);
     const type = Object.hasOwn(PUBLIC, file) ? PUBLIC[file] : null;
@@ -309,23 +323,24 @@ const server = createServer(async (req, res) => {
 // Live terminal stream. Browsers always send Origin on a websocket, so a missing or foreign one is refused.
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 server.on('upgrade', (req, socket, head) => {
-  const m = new URL(req.url, 'http://x').pathname.match(/^\/api\/films\/([^/]+)\/terminal\/ws$/);
+  const m = new URL(req.url, 'http://x').pathname.match(/^\/api\/(films|pge\/jobs)\/([^/]+)\/terminal\/ws$/);
+  const term = m?.[1] === 'pge/jobs' ? pgeTerminals : terminals;   // films or image jobs
   let slug = null;
-  try { slug = m && decodeURIComponent(m[1]); } catch {}
-  if (!terminals || !validSlug(slug) || !sameOrigin(req.headers.origin) || !ownHost(req.headers.host)) { socket.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
+  try { slug = m && decodeURIComponent(m[2]); } catch {}
+  if (!term || !validSlug(slug) || !sameOrigin(req.headers.origin) || !ownHost(req.headers.host)) { socket.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
   wss.handleUpgrade(req, socket, head, (ws) => {
     const out = (msg) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg));
-    const detach = terminals.attach(slug, { data: (d) => out({ t: 'o', d }), exit: (s) => out({ t: 'x', session: s }) });
+    const detach = term.attach(slug, { data: (d) => out({ t: 'o', d }), exit: (s) => out({ t: 'x', session: s }) });
     if (!detach) { out({ t: 'none' }); ws.close(); return; }
     ws.on('message', (raw) => {
       let msg; try { msg = JSON.parse(raw); } catch { return; }
-      if (msg.t === 'i' && typeof msg.d === 'string') terminals.write(slug, msg.d);
-      else if (msg.t === 'r') terminals.resize(slug, msg.cols, msg.rows);
+      if (msg.t === 'i' && typeof msg.d === 'string') term.write(slug, msg.d);
+      else if (msg.t === 'r') term.resize(slug, msg.cols, msg.rows);
     });
     ws.on('close', detach);
   });
 });
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { terminals?.killAll(); process.exit(0); });
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { terminals?.killAll(); pgeTerminals?.killAll(); process.exit(0); });
 
 server.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;

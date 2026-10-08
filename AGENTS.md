@@ -1,5 +1,7 @@
 # Motion studio rules (factory)
 
+> Working on an image job (`pge/jobs/<name>/`, a still or a carousel, not a film)? Follow `pge/AGENTS.md` instead.
+
 ## Layout — engine vs jobs
 - Root is the ENGINE, shared by every film. Never put brand files here.
 - Each film lives in `brands/<name>/`: its `index.html`, `assets/`, `docs/shotlist.md`,
@@ -99,14 +101,24 @@
 - No branches on state colour (`t < X ? mix(…) : CARD`): it snaps when the branch flips mid-spring. One
   expression whose springs reach their end values.
 - A counter settles before the beat that reads it (stiff spring ≥300/34 when it has <0.5s, or a ramp that
-  lands exactly on the next event).
+  lands exactly on the next event). An odometer shows every column from its first frame: roll from a value with
+  all its digits (10,000 → 28,100, not 0 → 28,100, which shows `03,291` mid-roll), and don't roll it while it rises through a mask.
 - Text that stacks near other text: give it `L.text` (always solid) or `{ solid: true }` so check.mjs sees
   collisions. Pass `{ align, baseline }` to `L.text` so it measures what fillText draws.
 - An anchor read at a click time must be drawn at exactly that time: hand off strictly after (`t > open`).
-- Export the scene table as `window.SCENES`: `shots.mjs events` steps through every handoff from it.
+- Export the scene table as `window.SCENES`: `shots.mjs events` steps through every handoff from it. Mark scenes that
+  are layers, not shots (cursor windows, flood overlays, a motif living through a section) `{ layer: true }`.
+- A flood that has covered the frame keeps painting its colour (its own overlay scene) for as long as any scene under
+  it is still drawing: scenes running past the cover time draw on top of the new colour (5 of portfolio's first 7 pops).
+- Every scene's `to` needs an exit for everything it drew: a heading that vanishes in one frame at `to` can pass
+  holds.mjs. Strip-shoot the frames just before each `to`.
+- Anchor text on every frame it's drawn, not only when settled: check.mjs only sees what's anchored. A camera push on a
+  full-width word clips it at the edges: max zoom = 1 / the word's width fraction (0.9 width → zoom ≤ 1.10).
 
 ## Sound
 - Score and SFX are synthesized in code unless a track is supplied.
+- Name note lengths once (`BEAT`, `E8 = BEAT / 2`, `S16`, `S32`) and never multiply them inline: `2 * S32` written for an
+  8th is a 16th (portfolio's bar-22 wall stopped stepping 2s early).
 - Write the beat grid FIRST (from BPM), lock every cut to it, then measure the mix. Snap every visual
   event time to the 16th grid BEFORE writing cues; a cue copied from an off-grid visual is off too.
 - Verify librosa grids with onsets, not `beat_track`, when hats sit on offbeats. Use
@@ -135,12 +147,17 @@
      full-size entries, hard swaps) and holds >1s where only grain/boil moves. Look at `out/pops.png`
      (±3 frames per pop) before fixing. Check a fix on a window (`--scan --from 12 --dur 2`, then
      `holds.mjs --file out/scan_12.00-14.00.mp4`); only the full `--scan` counts for the gate. It also fails
-     quiet stretches (>3s with ≤1% of the screen moving) and reports how much of the film moves (crisp: 60%+). Fix
+     quiet stretches (>3s with ≤1% of the screen moving) and reports how much of the film moves (crisp: 60%+). The meter
+     only sees big, high-contrast shapes moving ≥ ~1 source px/frame: subtle drift, thin type (≤ ~40px) and dark-on-dark
+     motion count as still. On a dark flood, carry the beat with light type. Fix
      each, or list an intended hold in film.json `"holds"`. The animatic is too coarse for it.
    - Every format: `shots.mjs events --format all` and `shots.mjs at <hook> <densest> <end> --format all`.
    - `check.mjs`: in every format, no fast move smears into copies (`streak`), every click lands in its target with the cursor at rest,
      no text overflows its parent, no two texts (or `{ solid: true }` anchors) collide, nothing sits cut by the frame edge.
-   Re-check the encoded MP4 once at the end (blur + compression change the look).
+   Re-check the encoded MP4 once at the end (blur + compression change the look), including `holds.mjs --file
+   out/silent_<primary>.mp4`: the half-size scan can pass a stretch the full-res render fails (portfolio: 4.4s quiet).
+   Overlap springs (a step every beat) so travel is continuous, not 0.4s moves split by 0.5s of stillness.
+   Loop check: `shots.mjs at 0` and `at <DUR − 1/fps>` must match; end all motion by DUR − 0.15.
 2. Score 1-10 on: hook in first 2s, readability at phone size,
    motion quality, variety, brand accuracy, sound sync. Score from measurements,
    not from the shotlist: if an item can be measured (holds, click hits, sync), measure it.

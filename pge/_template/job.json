@@ -1,0 +1,8 @@
+{
+  "kind": "carousel",
+  "bg": "#141413",
+  "formats": [
+    { "name": "portrait", "w": 1080, "h": 1350 }
+  ],
+  "allow": []
+}

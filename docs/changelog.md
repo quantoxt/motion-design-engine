@@ -7,8 +7,47 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-08
 
-### Agents start at high effort
-- Claude film agents (new and resumed) run with `--effort high` (`CLAUDE_EFFORT` in `studio/terminal.mjs`).
+### Images: design references
+- The image brief editor has a **Design references** panel: drop or pick images (PNG/JPG/GIF/WebP, ≤15 MB, ≤40). Saved with
+  the brief in `pge/briefs/<job>.refs/`, copied to the job's `assets/refs/` at start and mirrored after. Type checked by
+  the file's first bytes, same-origin uploads only. `pge/AGENTS.md`: the agent studies every reference and writes what it
+  takes (grammar, never content) in the style guide.
+
+### From the portfolio run (lessons + E-OPEN-1/2)
+- `shots.mjs events`: handoff rows capped at 1.2s, `{ layer: true }` scenes skipped, transform rows at half size, 12 rows
+  per sheet (E-OPEN-1). E-OPEN-2 documented.
+- `shots.mjs contact`: one still per bar at exact times → `out/contact.png` (portfolio's hand-made ffmpeg sheet had 23
+  tiles for 24 bars).
+- AGENTS.md: flood overlays keep painting, exits at every scene `to`, anchor text on every frame + max zoom on full-width
+  words, named note lengths (`E8`), odometers start with all columns, what the pace meter can't see, holds on the
+  encoded primary, exact loop check.
+
+### Images: zip download, viewer, Home
+- Download all final images as one zip (`/pge-media/<job>/finals.zip`, or `?format=<name>` for one format), from the job
+  page and the Images list. Stored zip written by `pge/lib/zip.mjs` (no dependency; checked with `unzip -t`).
+- Finals shown per format in posting order. Clicking a panel opens a full-screen viewer: ←/→ or swipe through the set,
+  D or the button downloads the PNG, Esc closes.
+- Home "Needs you" includes image jobs (story plan waiting for your OK, failed image agents); Running includes image agents.
+- `npm test`: 76.
+
+### PGE: image generation engine (new, isolated in `pge/`)
+- Stills that tell a story (single image, poster, or a carousel of panels), drawn in code on canvas like the films.
+  Rules for image agents: `pge/AGENTS.md` (root `AGENTS.md` points there for `pge/jobs/`).
+- `pge/lib/still.js`: `createStill()` stage (job.json formats, design units, anchors), `S.panels()` contract
+  (`window.paint(i)`, `PANELS`, `ready`), `S.text()` / `paragraph()` (text the checker can see).
+- `pge/check.mjs` → `out/check.json`: film geometry checks on each panel + phone size (11px at 360 wide), measured
+  contrast (3:1 from the painted pixels), empty panel. `pge/render.mjs`: `--draft`, gated final PNGs
+  `out/final/<job>-<format>-NN-<W>x<H>.png`, phone-size contact sheets. Renders are byte-identical run to run.
+- Studio: **Images** section (`#/images`): image briefs (same editor, `pge/brief-template.md` → `pge/briefs/`),
+  Start images (scaffold from `pge/_template/`), job page with agent terminal (Claude/OpenCode/custom on
+  `pge/jobs/<job>/docs/brief.md`), 7 gates incl. story-plan approval, finals/drafts/contact sheets.
+  Server routes in `pge/studio/api.mjs`; studio changes are additive: `createTerminals({ base })`, `agentPane({ base })`,
+  brief editor `KINDS`, `slugFor` reads `pge/jobs/____`, `briefTitle` accepts "(job name)". Needs a studio restart to appear.
+- Sample job `pge/jobs/paper-boat/` (6-panel story, 4:5 + 1:1): all gates done, 4 critique rounds.
+- `npm test` includes `pge/lib/*.test.mjs` and `pge/studio/*.test.mjs` (73 tests).
+
+### Agent effort: Claude medium, OpenCode high
+- Claude film agents (new and resumed) run with `--effort medium` (capped from high; `CLAUDE_EFFORT` in `studio/terminal.mjs`).
 - OpenCode film agents run `opencode/muse-spark-1.3-contributor-free` with variant `high`, set in the new root `opencode.json`
   (OpenCode has no effort flag, and v2.0.16 ignores `OPENCODE_CONFIG_CONTENT`). Any OpenCode run from the factory folder uses it.
 

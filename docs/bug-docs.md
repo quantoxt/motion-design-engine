@@ -9,6 +9,35 @@ Severity: **high** = breaks a real job · **med** = breaks a common option · **
 
 ---
 
+## 2026-10-08 · Logged by the portfolio film run (fixed after the run)
+
+### E-OPEN-1 · `shots.mjs events` (scene handoffs) · low · **fixed**
+- **Symptom:** on `brands/portfolio`, `shots.mjs events` ran >10 min and wrote an 11216×16292 `transforms.png` (182 Mpx; PIL refuses
+  to open it without lifting its bomb limit).
+- **Cause:** handoffs come from every overlapping pair in `window.SCENES`. Layer scenes that span a whole section (cursor windows,
+  flood overlays, a motif that lives 0→7.5s) make "handoff" windows of several seconds (0.00→7.50, 18.87→23.52), each shot at 0.15s steps.
+- **Proposed fix:** cap a handoff row at ~1.2s around the later scene's `from` (or skip scenes flagged `{ layer: true }` in SCENES),
+  and tile rows into several sheets above ~40 Mpx.
+- **Workaround used:** declared `window.TRANSFORMS` for every real transform and shot targeted `strip` windows by hand.
+- **Fix:** overlapping-scene handoff rows are capped at 1.2s after the later scene's `from`; scenes marked `{ layer: true }`
+  are skipped (AGENTS.md now asks for the flag); transform rows are shot at half size and tiled 12 rows per sheet
+  (`transforms.png`, `transforms_2.png`…), padding copies the row's last still instead of re-shooting it.
+- **Verified:** scratch copy of portfolio (no layer flags, so worst case): 182 Mpx → 50 Mpx after the cap alone; with
+  half size + 12-row sheets: 11.6 min → 2.4 min, 4 sheets of ≤14.3 Mpx. Template: unchanged rows (2.40→3.20, 6.40→7.30), 6s.
+- **Also found:** on portfolio the burnt-in time labels were invisible (the film leaves canvas state set at the end of a
+  frame, so a label drawn on its context was clipped away). Labels now go on an overlay canvas and the labelled still is
+  a page screenshot of canvas + overlay; unlabelled stills (`at`) are still the canvas alone. Verified on both films.
+
+### E-OPEN-2 · `holds.mjs` pace meter (quiet / moving) · low · **fixed (docs)**
+- **Symptom:** dark-on-dark motion (a near-black screenshot window growing on the ink flood) and thin moving type (a 36px
+  marquee) never register as motion, so a section full of real UI motion still failed "quiet over 3s".
+- **Cause:** pace counts 34-cell-wide grid cells whose *area average* changes by >8 levels between encoded scan frames.
+  Low-contrast or thin edges move the cell average by <8.
+- **Proposed fix:** none needed for the gate (it pushed the film toward bolder motion, which read better), but the docs should say it:
+  "the meter only sees big, high-contrast shapes moving ≥ ~1 source px/frame; subtle drift, thin type and dark-on-dark don't count."
+- **Workaround used:** bolder motion inside the brand film (marquees, camera leans, big type), no engine change.
+- **Fix:** documented in AGENTS.md's loop (what the meter can and can't see; carry dark floods with light type). Meter unchanged.
+
 ## 2026-10-08 · Studio UI fixes
 
 ### S-006 · `studio.mjs` transcript (`/terminal/log`) · med

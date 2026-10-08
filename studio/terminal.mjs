@@ -40,12 +40,13 @@ const PARENT_SESSION_ENV = ['CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE
 // `bash -lc` so quoting and env expansion work as typed. `<brief>` expands to the brief path;
 // without it the path is appended. Claude gets a session id we choose (so it can be resumed)
 // and the film's name; `resume` continues an earlier Claude session instead.
-// Film agents run at high effort, resumed ones too (effort is per session, not saved with the conversation).
-export const CLAUDE_EFFORT = 'high';
+// Claude film agents run at medium effort, resumed ones too (effort is per session, not saved with the conversation).
+export const CLAUDE_EFFORT = 'medium';
 // OpenCode has no effort flag: its model and variant ("high") are set in the factory's opencode.json (project config,
 // read because agents run from the factory root). OpenCode 2 ignores OPENCODE_CONFIG/_CONTENT, so it can't be per-session.
-export function command(runner, slug, custom, { agentSession, resume } = {}) {
-  const brief = `brands/${slug}/docs/brief.md`, prompt = `follow ${brief}`, effort = ['--effort', CLAUDE_EFFORT];
+// base: the folder jobs live in ('brands' for films, 'pge/jobs' for image jobs).
+export function command(runner, slug, custom, { agentSession, resume, base = 'brands' } = {}) {
+  const brief = `${base}/${slug}/docs/brief.md`, prompt = `follow ${brief}`, effort = ['--effort', CLAUDE_EFFORT];
   if (runner === 'claude' && resume) return { file: 'claude', args: ['--resume', resume, ...effort], label: `claude --resume ${resume} --effort ${CLAUDE_EFFORT}` };
   if (runner === 'claude') return { file: 'claude', args: ['--session-id', agentSession, '--name', slug, ...effort, prompt], label: `claude --effort ${CLAUDE_EFFORT} "${prompt}"` };
   if (runner === 'opencode' && resume) return { file: 'opencode', args: ['--session', resume], label: `opencode --session ${resume}` };
@@ -74,7 +75,7 @@ export function appendLog(file, data, cap = LOG_CAP) {
 }
 
 // spawn: node-pty's spawn (injected so tests can use a fake PTY).
-export function createTerminals({ root, spawn, logCap = LOG_CAP, scrollback = SCROLLBACK, opencode = opencodeCli, watchEvery = WATCH_EVERY, watchFor = WATCH_FOR }) {
+export function createTerminals({ root, spawn, base = 'brands', logCap = LOG_CAP, scrollback = SCROLLBACK, opencode = opencodeCli, watchEvery = WATCH_EVERY, watchFor = WATCH_FOR }) {
   const sessions = new Map();   // slug → session (kept after exit, for status + replay)
 
   const status = (s) => s && {
@@ -83,7 +84,7 @@ export function createTerminals({ root, spawn, logCap = LOG_CAP, scrollback = SC
   };
 
   // ── History: brands/<slug>/out/agent-sessions.json, oldest first ──
-  const historyFile = (slug) => join(root, 'brands', slug, 'out', 'agent-sessions.json');
+  const historyFile = (slug) => join(root, base, slug, 'out', 'agent-sessions.json');
   function readHistory(slug) {
     try { const h = JSON.parse(readFileSync(historyFile(slug), 'utf8')); return Array.isArray(h) ? h : []; } catch { return []; }
   }
@@ -103,8 +104,8 @@ export function createTerminals({ root, spawn, logCap = LOG_CAP, scrollback = SC
   }
 
   function start(slug, { runner, command: custom, resume, cols = 100, rows = 30 } = {}) {
-    const dir = join(root, 'brands', slug);
-    if (!existsSync(dir)) return { status: 404, error: `brands/${slug}/ doesn't exist.` };
+    const dir = join(root, base, slug);
+    if (!existsSync(dir)) return { status: 404, error: `${base}/${slug}/ doesn't exist.` };
     const live = sessions.get(slug);
     if (live && live.exitCode === null) return { status: 200, reattached: true, session: status(live) };
     let agentSession = null, resumedFrom = null, cmd;
@@ -117,11 +118,11 @@ export function createTerminals({ root, spawn, logCap = LOG_CAP, scrollback = SC
         ? 'OpenCode hadn’t started a session yet (no message was sent). Run the agent again instead.'
         : 'This session has no id to resume. Run the agent again instead.' };
       runner = prev.runner; agentSession = prev.agentSession; resumedFrom = prev.id;
-      cmd = command(runner, slug, null, { resume: agentSession });
+      cmd = command(runner, slug, null, { resume: agentSession, base });
     } else {
       if (!RUNNERS.includes(runner)) return { status: 400, error: 'Pick Claude, OpenCode or a custom command.' };
       if (runner === 'claude') agentSession = randomUUID();
-      cmd = command(runner, slug, custom, { agentSession });
+      cmd = command(runner, slug, custom, { agentSession, base });
       if (!cmd) return { status: 400, error: 'Type the custom command to run.' };
     }
 
@@ -176,7 +177,7 @@ export function createTerminals({ root, spawn, logCap = LOG_CAP, scrollback = SC
           const text = await opencode.firstMessage(root, o.id);
           if (!text) continue;                                  // no message yet: look again next time
           seen.add(o.id);
-          if (text.includes(`brands/${s.slug}/`)) { s.agentSession = o.id; record(s); break; }
+          if (text.includes(`${base}/${s.slug}/`)) { s.agentSession = o.id; record(s); break; }
         }
       } catch {} finally { busy = false; }
       if (s.agentSession || s.exitCode !== null || Date.now() - started > watchFor) clearInterval(timer);

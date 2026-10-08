@@ -1,4 +1,4 @@
-// Studio UI. Three views, hash-routed:
+// Studio UI. Views, hash-routed:
 //   #/               home: what needs you, running agents, recent films, then saved briefs
 //   #/agents         every agent session: running, past, resumable
 //   #/brief/new      new brief      #/brief/<slug>  edit a saved brief
@@ -6,12 +6,24 @@
 //   #/run/<slug>     the film's agent terminal, full page (gates live in the rail)
 //   #/library        Film Library: one folder per brand with finished films
 //   #/library/<slug> that brand's films; click one to play it full screen
+//   #/images         Images: image jobs (pge/), #/images/<slug> one job, #/images/brief/<slug|new> its brief
+//                    (views in pge/studio/view.mjs; the brief editor is shared, see KINDS)
 // The brief form is generated from _raw/brief-template.md (see brief.mjs).
 import { parse, serialize, slugFor, inline, readBack } from './brief.mjs';
 import { renderMarkdown } from './md.mjs';
 
 const $ = (sel) => document.querySelector(sel);
-const DRAFT_KEY = 'studio.brief.draft.v1';
+// Two kinds of brief share the editor: films (_raw/) and image jobs (pge/briefs/, the Images section).
+const KINDS = {
+  film: { name: 'film', template: '/api/template', briefs: '/api/briefs', dir: '_raw', route: '#/brief/', home: '#/', draft: 'studio.brief.draft.v1',
+    noun: 'brand', lead: 'Brief for', start: 'Start film', templateFile: '_raw/brief-template.md',
+    intro: 'Fill in what you know. Anything you leave blank, the agent works out from the website or codebase in section 1, and asks you when it matters.' },
+  image: { name: 'image', template: '/api/pge/template', briefs: '/api/pge/briefs', dir: 'pge/briefs', route: '#/images/brief/', home: '#/images', draft: 'studio.pge.draft.v1',
+    noun: 'job', lead: 'Image brief for', start: 'Start images', templateFile: 'pge/brief-template.md',
+    intro: 'Fill in what you know. Anything you leave blank, the agent decides and explains in the story plan, and asks you when it matters.' },
+};
+let kind = KINDS.film;
+const models = {};
 let model, templateText = '', templateId = '';
 let state = { checks: {}, inputs: {} };
 let editing = null;            // slug of the saved brief open in the editor (null = new brief)
@@ -82,10 +94,12 @@ function railLink(target, kids) {
 // ── Template ─────────────────────────────────────────────────────
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
 async function loadTemplate() {
-  if (model) return;
-  const { res, body } = await api('/api/template');
-  if (!res.ok) throw new Error('template');
-  templateText = body; templateId = hash(body); model = parse(body);
+  if (!models[kind.name]) {
+    const { res, body } = await api(kind.template);
+    if (!res.ok) throw new Error('template');
+    models[kind.name] = { templateText: body, templateId: hash(body), model: parse(body) };
+  }
+  ({ model, templateText, templateId } = models[kind.name]);
 }
 const defaults = () => {
   const s = { checks: {}, inputs: {} };
@@ -94,11 +108,11 @@ const defaults = () => {
 };
 
 // Drafts: only for new briefs, only valid for the exact template they were made on (answers are keyed by line).
-const saveDraft = () => { if (editing) return; try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ templateId, state })); } catch {} };
+const saveDraft = () => { if (editing) return; try { localStorage.setItem(kind.draft, JSON.stringify({ templateId, state })); } catch {} };
 const loadDraft = () => {
-  try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d?.templateId === templateId ? d.state : null; } catch { return null; }
+  try { const d = JSON.parse(localStorage.getItem(kind.draft) || 'null'); return d?.templateId === templateId ? d.state : null; } catch { return null; }
 };
-const dropDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch {} };
+const dropDraft = () => { try { localStorage.removeItem(kind.draft); } catch {} };
 
 // ═══ View: briefs list ═══════════════════════════════════════════
 async function viewList() {
@@ -149,6 +163,13 @@ async function startFilm(slug, btn) {
   if (res.status === 201 || res.status === 409) { location.hash = `#/run/${encodeURIComponent(body.latest ?? slug)}`; return; }
   if (btn) { btn.disabled = false; btn.textContent = 'Start film'; }
   alert(body.error || `Couldn’t start the film (${res.status}).`);
+}
+async function startImageJob(slug, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+  const { res, body } = await post('/api/pge/jobs', { slug });
+  if (res.status === 201 || res.status === 409) { location.hash = `#/images/${encodeURIComponent(slug)}`; return; }
+  if (btn) { btn.disabled = false; btn.textContent = KINDS.image.start; }
+  alert(body.error || `Couldn’t start the job (${res.status}).`);
 }
 
 // ═══ View: brief editor ══════════════════════════════════════════
@@ -213,15 +234,17 @@ function renderBlock(b) {
   return el('p', { class: 'text', html: b.html });
 }
 
-async function viewBrief(slug) {
+async function viewBrief(slug, k = KINDS.film) {
+  kind = k;
   shell({ railTitle: 'Brief sections', bar: true });
-  try { await loadTemplate(); } catch { return fatal('Couldn’t load <code>_raw/brief-template.md</code>. Check the file exists, then restart <code>node studio.mjs</code>.'); }
+  $('#film').textContent = kind.start;
+  try { await loadTemplate(); } catch { return fatal(`Couldn’t load <code>${kind.templateFile}</code>. Check the file exists, then restart <code>node studio.mjs</code>.`); }
 
   editing = slug;
   let missed = 0;
   if (slug) {
-    const { res, body } = await api(`/api/briefs/${encodeURIComponent(slug)}`);
-    if (!res.ok) return fatal(`<code>_raw/${escHtml(slug)}.md</code> doesn’t exist. <a href="#/">Back to briefs</a>`);
+    const { res, body } = await api(`${kind.briefs}/${encodeURIComponent(slug)}`);
+    if (!res.ok) return fatal(`<code>${kind.dir}/${escHtml(slug)}.md</code> doesn’t exist. <a href="${kind.home}">Back to briefs</a>`);
     ({ state, missed } = readBack(model, body));
   } else {
     state = loadDraft() ?? defaults();
@@ -232,10 +255,8 @@ async function viewBrief(slug) {
   const page = $('#page');
   const t = model.head.title;
   page.append(el('header', { class: 'head' }, [
-    el('h1', {}, [el('span', { class: 'lead' }, 'Brief for'), t ? blankInput(t.line, 0, 'brand name', 'blank', 'Brand name') : null]),
-    el('p', {}, slug
-      ? `Editing _raw/${slug}.md. Changes are saved to the same file.`
-      : 'Fill in what you know. Anything you leave blank, the agent works out from the website or codebase in section 1, and asks you when it matters.'),
+    el('h1', {}, [el('span', { class: 'lead' }, kind.lead), t ? blankInput(t.line, 0, `${kind.noun} name`, 'blank', `${kind.noun[0].toUpperCase()}${kind.noun.slice(1)} name`) : null]),
+    el('p', {}, slug ? `Editing ${kind.dir}/${slug}.md. Changes are saved to the same file.` : kind.intro),
     missed ? el('p', { class: 'note', style: 'color:var(--danger)' }, `${missed} answer${missed > 1 ? 's' : ''} from this brief couldn’t be matched to the current template and ${missed > 1 ? 'were' : 'was'} left out. Check the file before saving over it.`) : null,
   ]));
   const frames = $('#frames'), sections = [];
@@ -249,9 +270,19 @@ async function viewBrief(slug) {
     frames.append(el('li', {}, railLink(id, [el('span', { class: 'n' }, String(s.n)), el('span', { class: 'label', html: inline(s.title.replace(/\s*\(.*\)$/, '')) })])));
     frames.lastChild.firstChild.dataset.section = s.n;
   }
+  if (kind.name === 'image') {
+    // Image briefs take design references (uploaded images): the panel lives with the image engine.
+    const { refsPanel } = await import('./pge.mjs');
+    const ctx = { $, el, api, post, shell, fatal, escHtml, ago, agentPane, renderMarkdown, railLink, onLeave: (f) => cleanup.push(f) };
+    const refs = refsPanel(ctx, () => editing);
+    page.append(refs.box); sections.push(refs.box);
+    frames.append(el('li', {}, railLink('refs', [el('span', { class: 'n' }, '+'), el('span', { class: 'label' }, 'Design references')])));
+    refreshRefs = refs.refresh;
+  } else refreshRefs = null;
   watchActive(sections);
   changed();
 }
+let refreshRefs = null;   // the image brief's references panel, re-checked once a new brief is first saved
 
 // ── Editor status: lit frames, save target ──────────────────────
 const linesOf = (s) => s.blocks.flatMap((b) => (b.type === 'choice' ? b.options.map((o) => o.line) : b.line != null ? [b.line] : []));
@@ -272,9 +303,9 @@ function changed() {
   const slug = slugFor(model, state), where = $('#where');
   where.classList.remove('err');
   const renamed = editing && slug && slug !== editing;
-  where.innerHTML = !slug ? 'Name the brand to save.'
-    : renamed ? `Saves as a new file <b>_raw/${slug}.md</b> (the brand folder changed)`
-    : `Saves to <b>_raw/${slug}.md</b>`;
+  where.innerHTML = !slug ? `Name the ${kind.noun} to save.`
+    : renamed ? `Saves as a new file <b>${kind.dir}/${slug}.md</b> (the ${kind.noun} folder changed)`
+    : `Saves to <b>${kind.dir}/${slug}.md</b>`;
   $('#save').disabled = !slug || (!!editing && !dirty());
   $('#film').hidden = !(editing && slug === editing);
   $('#clear').hidden = !!editing;
@@ -290,11 +321,11 @@ async function save() {
   try {
     const md = serialize(model, state);
     // Saving the brief you opened replaces it; anything else needs an explicit OK.
-    const { res, body } = await post('/api/briefs', { slug, md, overwrite: confirming || slug === editing });
+    const { res, body } = await post(kind.briefs, { slug, md, overwrite: confirming || slug === editing });
     if (res.status === 409) {
       confirming = true;
       where.classList.add('err');
-      where.innerHTML = `<b>${escHtml(body.path)}</b> already exists. Replace it, or change the brand folder.`;
+      where.innerHTML = `<b>${escHtml(body.path)}</b> already exists. Replace it, or change the ${kind.noun} folder.`;
       btn.textContent = 'Replace brief';
       return false;
     }
@@ -303,9 +334,9 @@ async function save() {
     btn.textContent = 'Save brief';
     savedSnapshot = md;
     if (!editing) dropDraft();
-    if (editing !== slug) { editing = slug; history.replaceState(null, '', `#/brief/${encodeURIComponent(slug)}`); }
+    if (editing !== slug) { editing = slug; history.replaceState(null, '', `${kind.route}${encodeURIComponent(slug)}`); lastHash = location.hash; refreshRefs?.(); }
     changed();
-    where.innerHTML = `Saved <b>${escHtml(body.path)}</b>. Next: <b>Start film</b>, or tell the agent <code>follow ${escHtml(body.path)}</code>`;
+    where.innerHTML = `Saved <b>${escHtml(body.path)}</b>. Next: <b>${kind.start}</b>${kind.name === 'film' ? `, or tell the agent <code>follow ${escHtml(body.path)}</code>` : ''}`;
     btn.classList.remove('saved'); void btn.offsetWidth; btn.classList.add('saved');
     return true;
   } catch {
@@ -319,12 +350,13 @@ async function save() {
 
 $('#save').addEventListener('click', save);
 $('#film').addEventListener('click', async (e) => {
-  if (dirty() && !(await save())) return;     // the film starts from the saved brief
-  startFilm(editing, e.currentTarget);
+  if (dirty() && !(await save())) return;     // the film (or image job) starts from the saved brief
+  if (kind.name === 'image') startImageJob(editing, e.currentTarget);
+  else startFilm(editing, e.currentTarget);
 });
 $('#clear').addEventListener('click', () => {
   if (!confirm('Clear every answer in this form? Saved briefs are not affected.')) return;
-  dropDraft(); state = defaults(); viewBrief(null);
+  dropDraft(); state = defaults(); viewBrief(null, kind);
 });
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's' && !$('#bar').hidden) { e.preventDefault(); if (!$('#save').disabled) save(); }
@@ -505,7 +537,7 @@ async function viewFilm(slug) {
 // websocket. The session belongs to the studio process, so leaving or refreshing the page
 // only detaches; coming back replays the scrollback. See docs/terminal-spec.md.
 const RUNNER_KEY = 'studio.agent.runner.v1';
-function agentPane(slug, { open = false } = {}) {
+function agentPane(slug, { open = false, base = '/api/films' } = {}) {   // base: '/api/pge/jobs' for image jobs
   const saved = (() => { try { return JSON.parse(localStorage.getItem(RUNNER_KEY)) ?? {}; } catch { return {}; } })();
   let runner = saved.runner ?? 'claude', term = null, fit = null, ws = null, session = null;
   const enc = encodeURIComponent(slug);
@@ -573,7 +605,7 @@ function agentPane(slug, { open = false } = {}) {
     await ensureTerm();
     ws?.close();
     term.reset();
-    ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/api/films/${enc}/terminal/ws`);
+    ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}${base}/${enc}/terminal/ws`);
     ws.onopen = () => ws.send(JSON.stringify({ t: 'r', cols: term.cols, rows: term.rows }));
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
@@ -589,7 +621,7 @@ function agentPane(slug, { open = false } = {}) {
     if (session && !confirm('Start a fresh agent session? The old transcript stays in out/terminal.log.')) return;
     runBtn.disabled = true;
     await ensureTerm();
-    const { res, body } = await post(`/api/films/${enc}/terminal`, { runner, command: custom.value, cols: term.cols, rows: term.rows });
+    const { res, body } = await post(`${base}/${enc}/terminal`, { runner, command: custom.value, cols: term.cols, rows: term.rows });
     if (!res.ok) { runBtn.disabled = false; statusEl.textContent = body.error || `Couldn’t start the agent (${res.status}).`; return; }
     session = body.session; sync();
     await connect();
@@ -598,7 +630,7 @@ function agentPane(slug, { open = false } = {}) {
   async function resume() {
     resumeBtn.disabled = true;
     await ensureTerm();
-    const { res, body } = await post(`/api/films/${enc}/terminal`, { resume: last.id, cols: term.cols, rows: term.rows });
+    const { res, body } = await post(`${base}/${enc}/terminal`, { resume: last.id, cols: term.cols, rows: term.rows });
     resumeBtn.disabled = false;
     if (!res.ok) { statusEl.textContent = body.error || `Couldn’t resume (${res.status}).`; return; }
     session = body.session; sync();
@@ -607,19 +639,19 @@ function agentPane(slug, { open = false } = {}) {
 
   async function kill() {
     if (!confirm('Stop the agent? Unsaved work in its session is lost; files it already wrote stay.')) return;
-    const r = await fetch(`/api/films/${enc}/terminal`, { method: 'DELETE' });
+    const r = await fetch(`${base}/${enc}/terminal`, { method: 'DELETE' });
     if (!r.ok) statusEl.textContent = 'Couldn’t stop it. It may have already exited.';
   }
 
   async function loadLast() {
-    const { res, body } = await api(`/api/films/${enc}/terminal/history`);
+    const { res, body } = await api(`${base}/${enc}/terminal/history`);
     if (res.ok) { last = body.history.find((h) => h.state !== 'running') ?? null; sync(); }
   }
 
   (async () => {
     sync();
     if (open) await ensureTerm();
-    const { res, body } = await api(`/api/films/${enc}/terminal`);
+    const { res, body } = await api(`${base}/${enc}/terminal`);
     if (res.status === 503) { runBtn.disabled = true; statusEl.textContent = body.error; return; }
     await loadLast();
     if (res.ok) { session = body.session; sync(); await connect(); }
@@ -672,6 +704,8 @@ const NEED_ACTION = {
   shotlist: (n) => el('a', { class: 'button primary', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Read shotlist'),
   brief: (n) => el('a', { class: 'button', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Review and sync'),
   primary: (n) => el('a', { class: 'button primary', href: `#/film/${encodeURIComponent(n.slug)}` }, 'Watch primary render'),
+  plan: (n) => el('a', { class: 'button primary', href: `#/images/${encodeURIComponent(n.slug)}` }, 'Read plan'),
+  'image-agent': (n) => el('a', { class: 'button', href: `#/images/${encodeURIComponent(n.slug)}` }, 'Open job'),
   version: (n) => el('button', { type: 'button', class: 'primary', onclick: (e) => makeNextVersion(n.slug, e.currentTarget) }, 'Make new version'),
   agent: (n) => n.resumable
     ? el('button', { type: 'button', class: 'primary', onclick: (e) => resumeAgent(n.slug, n.session, e.currentTarget) }, 'Resume')
@@ -689,13 +723,13 @@ function renderDash(box, d) {
       NEED_ACTION[n.kind](n),
     ]))));
   } else {
-    box.append(el('p', { class: 'lib-sub' }, 'No film is waiting on you. Agents running and finished films are below.'));
+    box.append(el('p', { class: 'lib-sub' }, 'No film or image job is waiting on you. Agents running and finished films are below.'));
   }
   if (d.running.length) {
     box.append(el('h2', { class: 'dash-h' }, 'Running'));
     box.append(el('ul', { class: 'needs running' }, d.running.map((r) => el('li', {}, [
-      el('div', {}, [el('div', { class: 'name' }, r.slug), el('div', { class: 'meta' }, `${r.runner} · started ${ago(r.startedAt)}`)]),
-      el('a', { class: 'button', href: `#/run/${encodeURIComponent(r.slug)}` }, 'Open terminal'),
+      el('div', {}, [el('div', { class: 'name' }, r.slug), el('div', { class: 'meta' }, `${r.image ? 'image job · ' : ''}${r.runner} · started ${ago(r.startedAt)}`)]),
+      el('a', { class: 'button', href: r.image ? `#/images/${encodeURIComponent(r.slug)}` : `#/run/${encodeURIComponent(r.slug)}` }, 'Open terminal'),
     ]))));
   }
   if (d.finished.length) {
@@ -742,7 +776,7 @@ async function pollNeeds() {
   if (seenNeeds && 'Notification' in window && Notification.permission === 'granted') {
     for (const n of d.needs) if (!seenNeeds.has(n.key)) {
       const note = new Notification(`${n.slug} needs you`, { body: n.text, tag: n.key });
-      note.onclick = () => { window.focus(); location.hash = n.kind === 'agent' ? '#/agents' : `#/film/${encodeURIComponent(n.slug)}`; };
+      note.onclick = () => { window.focus(); location.hash = n.image ? `#/images/${encodeURIComponent(n.slug)}` : n.kind === 'agent' ? '#/agents' : `#/film/${encodeURIComponent(n.slug)}`; };
     }
   }
   seenNeeds = keys;
@@ -932,13 +966,21 @@ function play(b, index) {
 
 // ═══ Router ══════════════════════════════════════════════════════
 async function route() {
-  const [, view, arg] = location.hash.match(/^#\/(brief|film|run|library)\/([^/]+)$/) ?? [];
+  const [, view, arg] = location.hash.match(/^#\/(brief|film|run|library|images\/brief|images)\/([^/]+)$/) ?? [];
   const slug = arg && decodeURIComponent(arg);
-  const section = location.hash.startsWith('#/library') ? 'library' : location.hash.startsWith('#/agents') ? 'agents' : 'home';
+  const section = location.hash.startsWith('#/library') ? 'library' : location.hash.startsWith('#/agents') ? 'agents' : location.hash.startsWith('#/images') ? 'images' : 'home';
   for (const a of document.querySelectorAll('#nav a')) {
     if (a.dataset.nav === section) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
   if (view === 'brief') return viewBrief(slug === 'new' ? null : slug);
+  if (view === 'images/brief') return viewBrief(slug === 'new' ? null : slug, KINDS.image);
+  if (view === 'images' || location.hash === '#/images') {
+    // The Images section lives with the image engine (pge/studio/view.mjs, served as /pge.mjs).
+    editing = null;
+    const { viewImages, viewJob } = await import('./pge.mjs');
+    const ctx = { $, el, api, post, shell, fatal, escHtml, ago, agentPane, renderMarkdown, railLink, onLeave: (f) => cleanup.push(f) };
+    return view ? viewJob(ctx, slug) : viewImages(ctx);
+  }
   if (view === 'film') return viewFilm(slug);
   if (view === 'run') return viewRun(slug);
   if (view === 'library') return viewBrand(slug);
@@ -949,7 +991,7 @@ async function route() {
 }
 let lastHash = location.hash;
 addEventListener('hashchange', () => {
-  if (lastHash.startsWith('#/brief/') && editing && dirty() && !confirm('You have unsaved changes to this brief. Leave without saving?')) {
+  if (/^#\/(images\/)?brief\//.test(lastHash) && editing && dirty() && !confirm('You have unsaved changes to this brief. Leave without saving?')) {
     history.replaceState(null, '', lastHash); return;
   }
   lastHash = location.hash;

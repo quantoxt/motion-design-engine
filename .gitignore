@@ -28,3 +28,11 @@ __pycache__/
 # Lab references are other people's work, never pushed.
 lab/refs/*
 !lab/refs/.gitkeep
+
+# Image jobs (pge/): like films, each job and brief is client material; only the scaffold is shared.
+pge/jobs/*
+!pge/jobs/.gitkeep
+pge/briefs/*
+!pge/briefs/.gitkeep
+pge/_template/out/*
+!pge/_template/out/.gitkeep

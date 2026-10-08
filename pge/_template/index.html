@@ -1,0 +1,45 @@
+<meta charset="utf-8">
+<style>
+html,body{margin:0;background:#141413}canvas{display:block}
+/* Your two faces, from assets/fonts/ (one display, one text). Load every weight you draw in window.ready. */
+/* @font-face { font-family: "Display"; src: url(assets/fonts/display.woff2) format("woff2"); font-weight: 700; } */
+</style>
+<canvas id="c"></canvas>
+<script type="module">
+import { createStill, paragraph } from './pge/lib/still.js';
+import { fitText } from './lib/transitions.js';
+import { grain, vignette } from './lib/texture.js';
+import { strokeLine } from './lib/hand.js';
+
+// One panel per idea. Each draw(g, F, i) is pure: same pixels every time (seeded noise only, never Math.random).
+// Draw in design units: 1080 across the short side, origin at the centre. F.EX / F.EY are the half extents
+// of this format, so layouts adapt to every format in job.json.
+const S = await createStill();
+const DISPLAY = '700 {size}px "Display", Georgia, serif', TEXT = '500 {size}px "Text", system-ui, sans-serif';
+const BG = '#141413', INK = '#F0EEE6', ACCENT = '#D97757';
+
+S.panels([
+  { name: 'hook', bg: BG, draw(g, F) {
+      // Full-frame type: one word fills the width, with a tiny companion line (big needs small).
+      g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = INK;
+      const size = fitText(g, 'Hello.', F.width * 0.84, DISPLAY);
+      S.text(g, 'hero', 'Hello.', 0, size * 0.3, { size });
+      g.fillStyle = ACCENT;
+      S.text(g, 'hero.sub', 'one idea per panel', 0, size * 0.3 + 90, { size: 44, font: TEXT });
+      // The motif: one accent shape that recurs in every panel and carries the story.
+      g.fillRect(-60, -size * 0.75, 120, 14);
+  }},
+  { name: 'turn', bg: ACCENT, draw(g, F, i) {
+      grain(g, i, F); vignette(g, F);                       // flat colour gets texture, so it isn't a digital fill
+      g.fillStyle = BG; g.textAlign = 'left';
+      paragraph(S, g, 'body', 'A carousel reads like a comic: each panel moves the story one step.', -420, -120, 840, { size: 64, font: TEXT });
+      strokeLine(g, -420, 140, 200, 140, 1, { color: BG, width: 8 });   // hand-drawn ink, fixed shape
+      g.fillRect(-60, -F.EY + 120, 120, 14);                // the motif again, same place on every panel
+  }},
+]);
+
+window.ready = (async () => {
+  // await document.fonts.load('700 100px "Display"'); await document.fonts.load('500 40px "Text"');
+  await document.fonts.ready;
+})();
+</script>

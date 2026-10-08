@@ -22,4 +22,4 @@ code → checks by kind of bug (AGENTS.md loop) → critique 4 rounds (8+) → m
 (check.mjs + holds.mjs; the renderer refuses otherwise) → primary format render → human OK in the
 studio → other formats
 (--all-formats for every orientation) → finalize.mjs (−14 LUFS + posting copy)
-→ deliver `<brand>-<format>-<W>x<H>.mp4` (one per format) `+ contact.png + poster.png` → lessons to `docs/lessons.md`.
+→ deliver `<brand>-<format>-<W>x<H>.mp4` (one per format) `+ contact.png` (`node shots.mjs contact --dir …`) `+ poster.png` → lessons to `docs/lessons.md`.
