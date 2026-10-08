@@ -18,7 +18,7 @@ brands/<name>/
 ```
 
 Gates: assets → style_guide → shotlist + questions → OK → animatic (pacing) →
-code → checks by kind of bug (CLAUDE.md loop) → critique 4 rounds (8+) → machine checks pass
+code → checks by kind of bug (AGENTS.md loop) → critique 4 rounds (8+) → machine checks pass
 (check.mjs + holds.mjs; the renderer refuses otherwise) → primary format render → human OK in the
 studio → other formats
 (--all-formats for every orientation) → finalize.mjs (−14 LUFS + posting copy)

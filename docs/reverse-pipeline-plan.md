@@ -15,7 +15,7 @@ that becomes at most one by-product. The main product is the "why".
    (a) *design tokens*: palette, type scale, spacing, timing values, spring k/d;
    (b) *principle tokens*: named, measured reasons it works, e.g. "hook lands a new event every 0.6s in the first
    2s", "every transition is a match on the motif", "cuts sit on downbeats ±1 frame". Agree on a schema, and on how
-   tokens flow back into the factory (CLAUDE.md rules? `film.json` defaults? a library the agent reads?).
+   tokens flow back into the factory (AGENTS.md rules? `film.json` defaults? a library the agent reads?).
 2. **Isolation.** It gets its own folder (e.g. `lab/`, with `lab/refs/<name>/` per video, gitignored: references
    are other people's work). It never writes to `brands/` or the engine. It may *import* engine pieces read-only.
 3. **Reuse what exists now.** The factory already measures the things step 1–3 want:
@@ -31,7 +31,7 @@ that becomes at most one by-product. The main product is the "why".
    on the same metrics.
 5. **"Good" needs a judge.** Measurements say *what* happens; "why it's good" needs a rubric. The factory's critique
    axes (hook, phone readability, motion, variety, brand, sync) are a ready rubric. Any classifying/scoring done by
-   an LLM on text must follow the TypeSafe Jev rule in the user's global CLAUDE.md.
+   an LLM on text must follow the TypeSafe Jev rule in the user's global AGENTS.md.
 6. **Limits stay honest:** the agent can't watch or hear. Everything is stills + numbers, like the factory.
 
 ---

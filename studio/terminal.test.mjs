@@ -28,8 +28,11 @@ function fakeSpawn() {
 }
 
 test('presets run the agent on the brief; custom expands <brief> or appends it', () => {
-  assert.deepEqual(command('claude', 'acme', null, { agentSession: 'u-1' }).args, ['--session-id', 'u-1', '--name', 'acme', 'follow brands/acme/docs/brief.md']);
-  assert.deepEqual(command('claude', 'acme', null, { resume: 'u-1' }).args, ['--resume', 'u-1']);
+  assert.deepEqual(command('claude', 'acme', null, { agentSession: 'u-1' }).args, ['--session-id', 'u-1', '--name', 'acme', '--effort', 'high', 'follow brands/acme/docs/brief.md']);
+  const oc = JSON.parse(readFileSync(new URL('../opencode.json', import.meta.url), 'utf8'));
+  assert.equal(oc.agent.build.variant, 'high', 'OpenCode film agents run the high variant (factory opencode.json)');
+  assert.equal(oc.agent.build.model, oc.model);
+  assert.deepEqual(command('claude', 'acme', null, { resume: 'u-1' }).args, ['--resume', 'u-1', '--effort', 'high']);
   assert.deepEqual(command('opencode', 'acme').args, ['--prompt', 'follow brands/acme/docs/brief.md']);
   assert.deepEqual(command('custom', 'acme', 'codex "follow <brief>"').args, ['-lc', 'codex "follow brands/acme/docs/brief.md"']);
   assert.equal(command('custom', 'acme', ' my-agent ').args[1], 'my-agent brands/acme/docs/brief.md');
@@ -98,7 +101,7 @@ test('create, stream, input, resize, reattach, kill, respawn', () => {
   assert.equal(t.get('acme').session.exitCode, 3);
 
   const log = readFileSync(join(root, 'brands/acme/out/terminal.log'), 'utf8');
-  assert.match(log, /claude "follow brands\/acme\/docs\/brief.md"/);
+  assert.match(log, /claude --effort high "follow brands\/acme\/docs\/brief.md"/);
   assert.match(log, /hello/);
   assert.match(log, /exited with code 129/);
   assert.match(log, /exited with code 3/);
@@ -151,7 +154,7 @@ test('history survives restarts; Claude sessions resume, others don\'t', () => {
   assert.equal(t.start('hist', { resume: 'nope' }).status, 404);
   const r = t.start('hist', { resume: a.id });
   assert.equal(r.status, 201);
-  assert.deepEqual(spawned.at(-1).args, ['--resume', claudeId], 'same Claude conversation');
+  assert.deepEqual(spawned.at(-1).args, ['--resume', claudeId, '--effort', 'high'], 'same Claude conversation');
   assert.equal(t.live().length, 1);
   assert.equal(t.history('hist')[0].resumedFrom, a.id);
   assert.equal(t.history('hist')[0].state, 'running');

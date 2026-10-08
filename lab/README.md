@@ -7,7 +7,7 @@ reasons), not a copy. Plan: `docs/reverse-pipeline-plan.md`.
 ## Boundary (hard)
 
 - The lab **never writes outside `lab/`**. No writes to `brands/`, engine
-  scripts, `lib/`, `studio/`, `CLAUDE.md`, or any factory doc. Tokens land here
+  scripts, `lib/`, `studio/`, `AGENTS.md`, or any factory doc. Tokens land here
   as lab-local md; flow-back into the factory is a future explicit step.
 - The lab **may import** engine pieces read-only (`lib/holds.mjs`,
   `lib/motion.js`, `beats.py`). Never modify them from here.

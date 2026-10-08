@@ -62,7 +62,7 @@ pipeline again. v1 stays as delivered; the Library shows both under the same bra
 restarting the studio.
 
 Without the studio, open the project in Claude Code and say `follow _raw/<brand>.md`. The
-`motion-reel` skill (`.claude/skills/`) and `CLAUDE.md` carry the whole process.
+`motion-reel` skill (`.agents/skills/`) and `AGENTS.md` carry the whole process.
 
 ### Engine commands (what the agent runs)
 
@@ -86,7 +86,7 @@ Always pass `--dir`: without it, scripts work on the current folder. Finished fi
 ## Layout
 
 ```
-CLAUDE.md               rules every film follows (render contract, look, motion, sound, critique loop)
+AGENTS.md               rules every film follows (render contract, look, motion, sound, critique loop)
 studio.mjs, studio/     the web UI and its server (local only: binds 127.0.0.1)
 render*.mjs, shots.mjs, finalize.mjs, sfx.mjs, beats.py, lib/   the engine, shared by all films
 brands/_template/       scaffold for a new film

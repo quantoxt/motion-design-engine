@@ -7,6 +7,36 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-08
 
+### Agents start at high effort
+- Claude film agents (new and resumed) run with `--effort high` (`CLAUDE_EFFORT` in `studio/terminal.mjs`).
+- OpenCode film agents run `opencode/muse-spark-1.3-contributor-free` with variant `high`, set in the new root `opencode.json`
+  (OpenCode has no effort flag, and v2.0.16 ignores `OPENCODE_CONFIG_CONTENT`). Any OpenCode run from the factory folder uses it.
+
+### Studio fixes (S-001…S-005 in bug-docs)
+- Run page: Resume for the last session after you stop an agent or restart the studio; links to every version (v1, v2…).
+- Terminal: Shift+Enter makes a new line.
+- Rail no longer stuck on "Assets & style guide" (assets in subfolders now count).
+- Film page previews play (videos kept across refreshes; renders now written with `+faststart`).
+- Brief editor: Save disabled until something changes; Start film has a border. Film page agent status stays current.
+- `GET /api/films/:slug/terminal/history` (new).
+- "Read the transcript" shows the conversation (your messages, agent replies, tools run, failures) from Claude's session records, not the screen redraws (`studio/transcript.mjs`, S-006).
+
+### Agent-neutral skills layout
+- `CLAUDE.md` → `AGENTS.md`, factory skill `.claude/skills/motion-reel/` → `.agents/skills/motion-reel/`;
+  all live references updated. Deleted the divergent `agent/` copy, redundant `.claude/`, `skills-lock.json`.
+  Future skill installs land in `.agents/` and work for any agent, not just Claude.
+
+### HyperFrames takes (patterns ported to canvas; their DOM/CSS code doesn't transfer)
+- `lib/transitions.js`: `wipe` (clock-wipe wedge — the directional reveal flood can't do), `blinds` +
+  `blindsFor` (slat count follows the brief's Energy: calm 4 / steady 8 / showreel-fast 14), `dissolve`
+  (seeded palette grid — deterministic, pure like the rest). Same `(g, p, …)` signature as `flood()`.
+- `lib/cursor.js`: `ripple` (1–3 staggered rings from the click point — cause → effect instead of a blip);
+  template draws it, `ring()` kept as the progress source. Next films inherit it.
+- `lib/checks.mjs`: `choreo-easing` (animation-map pattern over anchors — one anchor entering at >3×
+  different speeds fails; teleports/swaps, exits, blips and ambient flicker don't count). Verified 0
+  findings on Unburn; 61/61 tests green.
+- `lib/transitions.test.mjs` (new): fake-ctx tests for all three takes, incl. choreo fires/pass cases.
+
 ### Lab: eye cross-check
 - `lab/eye.md` (new): where the eye reports and the lab agree, what the eye saw that the lab missed (ghosting exits,
   colour flips, loud/quiet, viewfinder, patterns, speed effects), the pace table for all 10 videos, open questions.
@@ -17,11 +47,11 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
   full-screen colour. The template's flood uses both.
 - `render.mjs`: relative `--out` now lands inside `--dir`, like the parallel renderer (F-002). Serial = parallel
   byte-identical on the template's grain flood.
-- CLAUDE.md: the last frame returns to the first frame's object and colour; full-screen flat colour gets grain +
+- AGENTS.md: the last frame returns to the first frame's object and colour; full-screen flat colour gets grain +
   vignette.
 
 ### From the lab reports
-- CLAUDE.md: the end card comes straight after the busiest moment (no slowing down before the logo), and a click
+- AGENTS.md: the end card comes straight after the busiest moment (no slowing down before the logo), and a click
   visibly changes the thing it touches first. The rest of the lab's findings were already covered.
 
 ### From the eye reports (`eye/`, a visual model's frame-by-frame read of the refs and our films)
@@ -40,7 +70,7 @@ The reports said why our films feel soft next to the references; the measures be
   refs v1/v4/v5 61–74% moving, longest quiet 1.6–2.7s; our films 12–37%, 4.6–9.3s (Unburn 12%, 9.3s).
   Calm refs v2/v6 would fail at 3s (4.2/4.8s): that's the "Calm and spacious" brief option.
 - **Planned holds capped at 2s** (film.json `holds`), end card included.
-- **Rules:** CLAUDE.md pace (a change every beat, a big one every bar), loud/quiet/loud, 2–3 full-screen type
+- **Rules:** AGENTS.md pace (a change every beat, a big one every bar), loud/quiet/loud, 2–3 full-screen type
   moments, exits turn into the next scene, background floods may rotate 4–5 colours when briefed, viewfinder layer
   allowed when briefed. Film agents never read `eye/` or `lab/`. Critique prompt and knowledge base updated.
 - **Brief template:** Full-screen type (2–3), Scene changes (flood / one background), Background colours for floods,
@@ -62,8 +92,8 @@ The reports said why our films feel soft next to the references; the measures be
   moment at 13.4–16.0, since Quantoxt has no film.json to list planned holds).
 
 ### Rule: film agents never write to the engine
-- CLAUDE.md, the skill, the brief template and `docs/bug-docs.md` now say it outright: root scripts, `lib/`, `studio/`,
-  `brands/_template/`, `CLAUDE.md` and `.claude/` are read-only during a film run. Engine bugs are logged `open` with a
+- AGENTS.md, the skill, the brief template and `docs/bug-docs.md` now say it outright: root scripts, `lib/`, `studio/`,
+  `brands/_template/`, `AGENTS.md` and `.agents/` are read-only during a film run. Engine bugs are logged `open` with a
   proposed fix and worked around in the brand folder. Before, the rules only said "log any engine bug", and the v2 agent
   fixed N-001/U-001 in the engine itself mid-run (good fixes, but one broke a test while Unburn depended on that code).
 
@@ -78,7 +108,7 @@ The reports said why our films feel soft next to the references; the measures be
   cut → ±0.3s), unless a declared transform already covers it. Template exports `window.SCENES`.
 - **`L.text(…, { align, baseline })`** sets them before measuring. `L.at` errors name the `t >= x` handoff fix.
 - `lib/layout.test.mjs`: the anchor test now expects the `solid` field added by N-001.
-- Rules: CLAUDE.md (one owner per morphing object, no state-colour branches, counters settle, entry from below
+- Rules: AGENTS.md (one owner per morphing object, no state-colour branches, counters settle, entry from below
   from `F.EY`, solid text, `window.SCENES`, snap visuals to the 16th grid before cues, onset `hop_length=128,
   backtrack=True`, pops.png + window scans in the loop); brief template + skill: every UI action a beat shows must
   exist in the product; template comment for entry from below.
@@ -140,7 +170,7 @@ The reports said why our films feel soft next to the references; the measures be
 - Verified: 46 tests (approve/stale/revoke/409, legacy, media allowlist, frameExtents). On a scratch copy of the
   template: `--all-formats` rendered vertical and stopped at square ("waiting for the human's OK"); after
   `approvePrimary`, `--formats square,wide` rendered and the All formats gate listed all three.
-- CLAUDE.md, skill, brief template, `_template/README.md`, README, factory map, terminal spec updated.
+- AGENTS.md, skill, brief template, `_template/README.md`, README, factory map, terminal spec updated.
 
 ### Added: anchors, `check.mjs`, and the Machine checks gate
 The Narrative Nexus lessons traced most bugs to one position typed twice. This makes the right way the default
@@ -167,7 +197,7 @@ and proves it before a full render.
 - `_template/index.html` rebuilt as the reference: camera transform, anchors, a chip sized from its text, an
   odometer, a button whose label swaps on the click, an anchor-driven cursor, EVENTS/TRANSFORMS from constants.
 - `lib/package.json` marks `lib/*.js` as ES modules for Node (tests); the browser is unaffected.
-- Docs: CLAUDE.md (Motion + Loop), skill, brief template, `_template/README.md`, README (steps, commands, test count),
+- Docs: AGENTS.md (Motion + Loop), skill, brief template, `_template/README.md`, README (steps, commands, test count),
   factory map (tree, conventions: camera transform replaces `S(x,y)`, anchors, check results), terminal spec (8 gates).
 - Verified: 45 tests. On a scratch copy of the template: `check.mjs` passes in all 3 formats; a broken copy
   (hand-typed cursor, fixed-width chip, cut-off element) fails with all 4 planted bugs named. Gate flow: blocked →
@@ -180,7 +210,7 @@ and proves it before a full render.
   `out/transforms.png` = one row per transform at 0.15s steps.
 - `--format <name>` / `--format all` shoots any `film.json` format in every mode; outputs get a `_<format>` suffix.
   Unknown format or mode exits 2. Without the flag, output is unchanged.
-- `_template/index.html` declares empty `window.EVENTS` / `window.TRANSFORMS`; CLAUDE.md loop, skill, brief
+- `_template/index.html` declares empty `window.EVENTS` / `window.TRANSFORMS`; AGENTS.md loop, skill, brief
   template, factory map and README use the commands.
 - Verified on a scratch copy of Narrative Nexus with its CLICKS wired in: the sheets show the click misses (7.2,
   11.4, 24.0), the edge-on cover (14.85–15.15) and the unreadable shrink (28.95–29.25); `--format wide` and
@@ -194,13 +224,13 @@ and proves it before a full render.
   `"holds"` lists intended holds. Exit 1 on findings. Logic in `lib/holds.mjs`, 5 tests (34 total).
 - Verified on a scratch copy of Narrative Nexus: all 4 pops the agent found by hand (24.000 Unlock swap, 29.717,
   30.017, 30.317), no false ones; every hold it listed, plus 22.58–24.03. Runs in ~5s.
-- CLAUDE.md loop, skill, brief template, factory map and README name the commands.
+- AGENTS.md loop, skill, brief template, factory map and README name the commands.
 - Fixed L-004 (below).
 
 ### Changed: rules from the Narrative Nexus lessons
-- `CLAUDE.md` Motion: one source of truth per position, cursor lands ≥0.4s early inside its target,
+- `AGENTS.md` Motion: one source of truth per position, cursor lands ≥0.4s early inside its target,
   hinged 3D turns, entries from 0, motif never covers its words, readable before/after states, bleed from the frame.
-- `CLAUDE.md` Loop: check by kind of bug on the animatic (click/swap stills, 0.15s transform steps, pop/hold
+- `AGENTS.md` Loop: check by kind of bug on the animatic (click/swap stills, 0.15s transform steps, pop/hold
   scan, every format), score from measurements, render the primary format first. Skill and brief template match.
 - `render-parallel.mjs --all-formats --formats a,b` renders only the named formats (unknown names exit 1).
   Dispatch only; frame code untouched, so no framemd5 re-check needed.
@@ -209,7 +239,7 @@ and proves it before a full render.
 
 ### Changed: lessons live in each brand folder
 - Agents write lessons to `brands/<brand>/docs/lessons.md` and never read or write `docs/LESSONS.md`, which is now
-  curated by hand. New `## Lessons` section in `CLAUDE.md`; skill, brief template, `_template/README.md` and
+  curated by hand. New `## Lessons` section in `AGENTS.md`; skill, brief template, `_template/README.md` and
   factory map updated to match. Agents read their brand's `lessons.md` before planning; `makeVersion`
   carries it into the next version (test assertion added).
 
@@ -244,7 +274,7 @@ and proves it before a full render.
   the film GET, and an accurate "what it writes" note (it said it only wrote `_raw/`).
 - `docs/factory-map.md`: `package.json` entry; Home/Agents/Library routes in one place; library allowlist,
   OpenCode resume and films.mjs drift/sync/attention described; rule 3 says `finalize.mjs --all-formats`.
-- `CLAUDE.md`: finalize's `--all-formats` and the final file naming (never rename: gates and Library read it).
+- `AGENTS.md`: finalize's `--all-formats` and the final file naming (never rename: gates and Library read it).
 - `finalize.mjs`: when two renders would make the same final, the newest wins with a warning (L-003).
 - Removed dead CSS (`.handoff .cmd`). `.gitignore`: `__pycache__/`.
 - Every file in the repo is in the factory map, except the test files and fonts (covered by `*.test.mjs` and
@@ -253,7 +283,7 @@ and proves it before a full render.
 ### Added: git repo, README, .gitignore
 - `git init` (branch `master`, nothing committed yet). `.gitignore` keeps out `node_modules/`, every brand folder
   except `brands/_template/`, every filled brief except `_raw/brief-template.md`, a stray root `out/`, and
-  `.claude/settings.local.json`.
+  `.agents/settings.local.json`.
 - `brands/_template/assets/.gitkeep` and `out/.gitkeep` so a fresh clone scaffolds films with both folders.
 - `README.md`: requirements (Node 20+, ffmpeg/ffprobe, build tools for node-pty, Playwright Chromium, an agent CLI,
   optional numpy/librosa), setup, the studio flow, engine commands, layout, what's not in the repo.

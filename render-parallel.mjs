@@ -108,7 +108,7 @@ try {
     '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-crf', String(CRF),
     // Scan: one keyframe only. A keyframe re-quantizes the whole picture, which holds.mjs reads as a pop.
     ...(SCAN ? ['-x264-params', 'keyint=infinite:scenecut=0'] : []),
-    '-pix_fmt', 'yuv420p', OUT],
+    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUT],
     { stdio: ['pipe', 'inherit', 'inherit'] });
   const ffDone = new Promise((r, j) => ff.on('close', (c) => (c === 0 ? r() : j(new Error(`ffmpeg exited ${c}`)))));
   ff.stdin.on('error', () => {});   // ffmpeg quit early: ffDone carries its exit code instead of an EPIPE stack

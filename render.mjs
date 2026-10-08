@@ -30,7 +30,7 @@ await page.evaluate(() => document.fonts.ready);
 
 const vf = `tmix=frames=${SUB},select='eq(mod(n\\,${SUB})\\,${SUB - 1})',setpts=N/${FPS}/TB`;
 const ff = spawn('ffmpeg', ['-y', '-v', 'error', '-f', 'image2pipe', '-framerate', String(FPS * SUB), '-i', '-',
-  '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', OUT],
+  '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUT],
   { stdio: ['pipe', 'inherit', 'inherit'] });
 
 // Subframes sit at the end of each frame's shutter window, so frame n covers ((n-1)/FPS, n/FPS].

@@ -9,6 +9,8 @@ import { finals } from './library.mjs';
 import { CHECKS, readResult, primaryReview, fingerprint } from '../lib/gate.mjs';
 
 const mtime = async (p) => { try { return (await stat(p)).mtime.toISOString(); } catch { return null; } };
+// Every file under dir, subfolders included (assets usually live in assets/fonts/, assets/logo/…).
+const allFiles = async (dir) => { try { return (await readdir(dir, { withFileTypes: true, recursive: true })).filter((d) => d.isFile() && !d.name.startsWith('.')).map((d) => d.name); } catch { return []; } };
 const files = async (dir) => { try { return (await readdir(dir, { withFileTypes: true })).filter((d) => d.isFile() && !d.name.startsWith('.')).map((d) => d.name); } catch { return []; } };
 const read = async (p) => { try { return await readFile(p, 'utf8'); } catch { return null; } };
 // Same value as `sha256sum docs/shotlist.md`, so the agent can check an approval from the shell.
@@ -94,7 +96,7 @@ export async function gates(root, slug) {
   if (!existsSync(dir)) return null;
   const tplGuide = await read(join(root, 'brands', '_template', 'docs', 'style_guide.md'));
   const guide = await read(join(dir, 'docs', 'style_guide.md'));
-  const assets = await files(join(dir, 'assets'));
+  const assets = await allFiles(join(dir, 'assets'));
   const out = await files(join(dir, 'out'));
   const review = await read(join(dir, 'docs', 'review_log.md'));
   const rounds = review ? (review.match(/^#{1,4}\s*round\b/gim) ?? []).length : 0;
@@ -281,7 +283,7 @@ export async function makeVersion(root, slug) {
   await writeFile(join(dest, 'film.json'), JSON.stringify({ ...film, ...filmSettings(model, readBack(model, raw).state) }, null, 2) + '\n');
 
   const diff = briefChanges(await read(join(src, 'docs', 'brief.md')), raw);
-  const assetCount = (await files(join(dest, 'assets'))).length;
+  const assetCount = (await allFiles(join(dest, 'assets'))).length;
   const list = (xs) => (xs.length ? xs.join(' · ') : 'none');
   await writeFile(join(dest, 'docs', 'previous-version.md'), `# v${version} of ${base}
 

@@ -16,7 +16,7 @@ _raw/*
 /out/
 
 # Local-only Claude settings
-.claude/settings.local.json
+.agents/settings.local.json
 
 # OS / editor noise
 .DS_Store

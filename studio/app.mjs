@@ -275,7 +275,7 @@ function changed() {
   where.innerHTML = !slug ? 'Name the brand to save.'
     : renamed ? `Saves as a new file <b>_raw/${slug}.md</b> (the brand folder changed)`
     : `Saves to <b>_raw/${slug}.md</b>`;
-  $('#save').disabled = !slug;
+  $('#save').disabled = !slug || (!!editing && !dirty());
   $('#film').hidden = !(editing && slug === editing);
   $('#clear').hidden = !!editing;
   if (confirming) { confirming = false; $('#save').textContent = 'Save brief'; }
@@ -313,7 +313,7 @@ async function save() {
     where.textContent = 'Can’t reach the studio server. Is node studio.mjs still running?';
     return false;
   } finally {
-    btn.disabled = !slugFor(model, state);
+    btn.disabled = !slugFor(model, state) || (!!editing && !dirty());
   }
 }
 
@@ -352,7 +352,13 @@ async function viewFilm(slug) {
     pollNeeds();
   }
 
-  let built = false;
+  // Preview videos are kept across refreshes: the page rebuilds while the agent works, and a new <video>
+  // each time restarted the download and playback every few seconds.
+  const videos = new Map();
+  const preview = (src) => {
+    if (!videos.has(src)) videos.set(src, el('video', { class: 'review', src, controls: true, preload: 'metadata', playsinline: true }));
+    return videos.get(src);
+  };
   // Shotlist review panel: kept across refreshes so the 4s poll doesn't close what you're reading.
   let panel = null, panelSha = null;
   async function openShotlist(msg) {
@@ -402,7 +408,7 @@ async function viewFilm(slug) {
   }
   function primaryControls(g) {
     if (!g.approval || g.approval === 'missing') return null;
-    const video = el('video', { class: 'review', src: `${media(slug, g.file)}?v=${encodeURIComponent(g.stamp)}`, controls: true, preload: 'metadata', playsinline: true });
+    const video = preview(`${media(slug, g.file)}?v=${encodeURIComponent(g.stamp)}`);
     const acts = g.approval === 'approved'
       ? el('div', { class: 'gacts' }, [el('button', { type: 'button', class: 'quiet', onclick: revokePrimary }, 'Withdraw approval')])
       : el('div', { class: 'gacts' }, [el('button', { type: 'button', class: 'primary', onclick: (e) => approvePrimary(g, e) }, 'Approve, render the other formats'),
@@ -456,7 +462,7 @@ async function viewFilm(slug) {
       g.id === 'shotlist' ? shotlistControls(g) : null,
       ...(g.id === 'primary' ? primaryControls(g) ?? [] : []),
       g.id === 'shotlist' && panel ? panel : null,
-      g.id === 'animatic' && g.done ? el('video', { class: 'review', src: `${media(slug, 'animatic.mp4')}?v=${encodeURIComponent(g.updated)}`, controls: true, preload: 'metadata', playsinline: true }) : null,
+      g.id === 'animatic' && g.done ? preview(`${media(slug, 'animatic.mp4')}?v=${encodeURIComponent(g.updated)}`) : null,
       g.id === 'final' && g.done ? el('a', { class: 'review-img', href: media(slug, 'contact.png'), target: '_blank', rel: 'noopener' },
         el('img', { src: `${media(slug, 'contact.png')}?v=${encodeURIComponent(g.updated)}`, alt: 'Contact sheet of the finished film', loading: 'lazy' })) : null,
     ])));
@@ -467,7 +473,7 @@ async function viewFilm(slug) {
       a.setAttribute('aria-current', String(g.state === 'current'));
       frames.append(el('li', {}, a));
     });
-    if (!built) {
+    {   // agent status: rebuilt with the page, so it doesn't keep saying "running" after the agent stops
       const cmd = `follow brands/${slug}/docs/brief.md`;
       const { res: tr, body: tb } = await api(`/api/films/${encodeURIComponent(slug)}/terminal`);
       const live = tr.ok && tb.session.status === 'running';
@@ -486,7 +492,6 @@ async function viewFilm(slug) {
           } }, 'Copy'),
         ]),
       );
-      built = true;
     }
     return true;
   }
@@ -512,11 +517,14 @@ function agentPane(slug, { open = false } = {}) {
     el('input', { type: 'radio', name: 'runner', value: id, checked: runner === id, onchange: () => { runner = id; remember(); sync(); } }), label]);
   const runBtn = el('button', { type: 'button', class: 'run', onclick: run }, 'Run agent');
   const killBtn = el('button', { type: 'button', class: 'kill', onclick: kill, hidden: true }, 'Stop agent');
+  // The newest session in this film's history that can continue (same conversation), when nothing is running.
+  let last = null;
+  const resumeBtn = el('button', { type: 'button', class: 'primary', hidden: true, onclick: resume }, 'Resume');
   const statusEl = el('span', { class: 'term-status', role: 'status' });
   const screen = el('div', { class: 'term', hidden: true });
   const box = el('div', { class: 'agent' }, [
     el('div', { class: 'runners', role: 'radiogroup', 'aria-label': 'Agent' }, [choice('claude', 'Claude'), choice('opencode', 'OpenCode'), choice('custom', 'Custom'), custom]),
-    el('div', { class: 'term-bar' }, [runBtn, killBtn, statusEl]),
+    el('div', { class: 'term-bar' }, [resumeBtn, runBtn, killBtn, statusEl]),
     screen,
   ]);
 
@@ -527,7 +535,9 @@ function agentPane(slug, { open = false } = {}) {
     runBtn.textContent = live ? 'Running' : session ? 'Run again' : 'Run agent';
     runBtn.disabled = live;
     killBtn.hidden = !live;
-    statusEl.textContent = !session ? '' : live ? `Running: ${session.command}` : `Exited with code ${session.exitCode} · ${session.command}`;
+    resumeBtn.hidden = live || !last?.resumable;
+    if (!resumeBtn.hidden) resumeBtn.title = `Continue the ${RUNNER_NAME[last.runner]} session from ${ago(last.startedAt)}`;
+    statusEl.textContent = !session ? (last ? `Last session: ${RUNNER_NAME[last.runner]}, ${ago(last.startedAt)}` : '') : live ? `Running: ${session.command}` : `Exited with code ${session.exitCode} · ${session.command}`;
     statusEl.dataset.state = session ? session.status : '';
     if (live && session.runner === 'opencode') statusEl.textContent += ' · OpenCode fills in the prompt: click the terminal and press Enter to send it.';
   }
@@ -544,6 +554,14 @@ function agentPane(slug, { open = false } = {}) {
     term.open(screen);
     fit.fit();
     term.onData((d) => ws?.readyState === 1 && ws.send(JSON.stringify({ t: 'i', d })));
+    // Shift+Enter: a new line in the agent's prompt instead of sending it. xterm sends a plain CR for both,
+    // so send ESC+CR (what Claude Code and OpenCode read as a newline) and swallow the key's other events.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
+      if (e.type === 'keydown' && ws?.readyState === 1) ws.send(JSON.stringify({ t: 'i', d: '\x1b\r' }));
+      e.preventDefault();
+      return false;
+    });
     term.onResize(({ cols, rows }) => ws?.readyState === 1 && ws.send(JSON.stringify({ t: 'r', cols, rows })));
     const ro = new ResizeObserver(() => { try { fit.fit(); } catch {} });
     ro.observe(screen);
@@ -560,7 +578,7 @@ function agentPane(slug, { open = false } = {}) {
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.t === 'o') term.write(m.d);
-      else if (m.t === 'x') { session = m.session; sync(); }
+      else if (m.t === 'x') { session = m.session; sync(); loadLast(); }
     };
     ws.onclose = () => { if (session?.status === 'running') { statusEl.textContent = 'Disconnected from the studio. Reload the page to reattach.'; } };
     term.focus();
@@ -577,10 +595,25 @@ function agentPane(slug, { open = false } = {}) {
     await connect();
   }
 
+  async function resume() {
+    resumeBtn.disabled = true;
+    await ensureTerm();
+    const { res, body } = await post(`/api/films/${enc}/terminal`, { resume: last.id, cols: term.cols, rows: term.rows });
+    resumeBtn.disabled = false;
+    if (!res.ok) { statusEl.textContent = body.error || `Couldn’t resume (${res.status}).`; return; }
+    session = body.session; sync();
+    await connect();
+  }
+
   async function kill() {
     if (!confirm('Stop the agent? Unsaved work in its session is lost; files it already wrote stay.')) return;
     const r = await fetch(`/api/films/${enc}/terminal`, { method: 'DELETE' });
     if (!r.ok) statusEl.textContent = 'Couldn’t stop it. It may have already exited.';
+  }
+
+  async function loadLast() {
+    const { res, body } = await api(`/api/films/${enc}/terminal/history`);
+    if (res.ok) { last = body.history.find((h) => h.state !== 'running') ?? null; sync(); }
   }
 
   (async () => {
@@ -588,6 +621,7 @@ function agentPane(slug, { open = false } = {}) {
     if (open) await ensureTerm();
     const { res, body } = await api(`/api/films/${enc}/terminal`);
     if (res.status === 503) { runBtn.disabled = true; statusEl.textContent = body.error; return; }
+    await loadLast();
     if (res.ok) { session = body.session; sync(); await connect(); }
   })();
   cleanup.push(() => { if (ws) { ws.onclose = null; ws.close(); } });
@@ -601,9 +635,12 @@ async function viewRun(slug) {
   const enc = encodeURIComponent(slug);
   const { res, body: f } = await api(`/api/films/${enc}`);
   if (!res.ok) return fatal(`${escHtml(f.error || 'Film not found.')} <a href="#/">Back to briefs</a>`);
+  const vi = f.version ?? { versions: [] };
+  const switcher = vi.versions.length > 1 ? el('p', { class: 'versions' }, ['Versions: ', ...vi.versions.flatMap((v, i) => [i ? ' ' : null,
+    v.slug === slug ? el('b', {}, `v${v.version}`) : el('a', { href: `#/run/${encodeURIComponent(v.slug)}` }, `v${v.version}`)])]) : null;
   $('#page').append(
     el('header', { class: 'run-head' }, [
-      el('h1', {}, slug),
+      el('div', {}, [el('h1', {}, slug), switcher]),
       el('a', { class: 'button quiet', href: `#/film/${enc}` }, 'Gates and shotlist'),
     ]),
     el('div', { class: 'handoff run-box' }, agentPane(slug, { open: true })),

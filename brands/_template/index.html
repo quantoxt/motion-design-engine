@@ -4,7 +4,7 @@
 <script type="module">
 import { spring, track, clamp, rng } from './lib/motion.js';
 import { createLayout, frameExtents } from './lib/layout.js';
-import { cursorAt, ring } from './lib/cursor.js';
+import { cursorAt, ring, ripple } from './lib/cursor.js';
 import { drawOdometer, swapText } from './lib/type.js';
 import { flood, covered, fitText } from './lib/transitions.js';
 import { grain, vignette } from './lib/texture.js';
@@ -140,10 +140,7 @@ function draw(t) {
   if (t > 3.6 && t < FLOOD + 0.35) {                     // the cursor leaves with the scene it was in
     const c = cursorAt(t, L, CLICKS, { home: [W * 0.85, H * 0.95], from: 3.6 });
     g.setTransform(1, 0, 0, 1, 0, 0);
-    for (const k of CLICKS) {
-      const r = ring(t, k.t);
-      if (r > 0 && r < 1) { g.strokeStyle = ACCENT; g.lineWidth = 3 * K; g.globalAlpha = 1 - r; g.beginPath(); g.arc(c.x, c.y, 60 * K * r, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
-    }
+    for (const k of CLICKS) ripple(g, c.x, c.y, ring(t, k.t), { color: ACCENT, r1: 90 * K });
     const s = 34 * K * (1 - 0.15 * c.press);
     g.fillStyle = INK; g.strokeStyle = BG; g.lineWidth = 2 * K;
     g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(c.x, c.y + s); g.lineTo(c.x + s * 0.28, c.y + s * 0.74); g.lineTo(c.x + s * 0.7, c.y + s * 0.7); g.closePath();

@@ -18,7 +18,9 @@
 //   DELETE /api/films/:slug/terminal  kill the session
 //   GET  /api/dashboard      needs you (shotlist and primary-render OKs, edited briefs, failed agents) · running agents · recent films
 //   GET  /api/agents         running sessions + every film's session history (Claude and OpenCode sessions resume)
-//   GET  /api/films/:slug/terminal/log  the film's transcript as plain text (escape codes stripped)
+//   GET  /api/films/:slug/terminal/log  the film's transcript as plain text: Claude sessions from their own records
+//                                       (~/.claude/projects), others from terminal.log (escape codes stripped)
+//   GET  /api/films/:slug/terminal/history  this film's agent sessions, newest first (the run page's Resume)
 //   POST /api/films/:slug/brief/sync    copy the edited brief into a film in production (409 once delivered)
 //   POST /api/films/:slug/version       delivered film + changed brief → brands/<brand>-vN/, seeded from the last version
 //   GET  /api/library        brands with finished films (out/<slug>-<format>-<W>x<H>.mp4)
@@ -31,7 +33,7 @@
 // out/terminal.log, out/agent-sessions.json), brands/<brand>-vN/ (new version). Slugs are validated; nothing else is written.
 import { createServer } from 'node:http';
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
-import { existsSync, createReadStream } from 'node:fs';
+import { existsSync, createReadStream, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -42,6 +44,7 @@ import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, approvePrim
   makeVersion, versionInfo, versions, splitVersion } from './studio/films.mjs';
 import { createTerminals } from './studio/terminal.mjs';
 import { library, brand, mediaFile } from './studio/library.mjs';
+import { filmTranscript } from './studio/transcript.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const RAW = join(ROOT, '_raw'), TEMPLATE = join(RAW, 'brief-template.md'), UI = join(ROOT, 'studio');
@@ -140,15 +143,19 @@ async function api(req, res, path) {
     if (origin && !sameOrigin(origin)) return send(res, 403, { error: 'Cross-origin request refused.' });
   }
 
-  const sub = path.match(/^\/api\/films\/([^/]+)\/(terminal\/log|brief\/sync|version)$/);
+  const sub = path.match(/^\/api\/films\/([^/]+)\/(terminal\/log|terminal\/history|brief\/sync|version)$/);
   if (sub) {
     const slug = decodeURIComponent(sub[1]);
     if (!validSlug(slug)) return send(res, 400, { error: 'Invalid name.' });
     if (sub[2] === 'terminal/log' && req.method === 'GET') {
+      // The conversation from Claude's own session records; the screen log only for sessions without one.
       const file = join(ROOT, 'brands', slug, 'out', 'terminal.log');
-      if (!existsSync(file)) return send(res, 404, { error: 'No transcript yet.' });
-      return send(res, 200, plainLog(await readFile(file, 'utf8')), 'text/plain; charset=utf-8');
+      const h = history(slug);
+      if (!h.length && !existsSync(file)) return send(res, 404, { error: 'No transcript yet.' });
+      const text = filmTranscript({ root: ROOT, history: h, plainLog: () => (existsSync(file) ? plainLog(readFileSync(file, 'utf8')) : '') });
+      return send(res, 200, text, 'text/plain; charset=utf-8');
     }
+    if (sub[2] === 'terminal/history' && req.method === 'GET') return send(res, 200, { history: history(slug) });
     if (sub[2] === 'version' && req.method === 'POST') {
       const r = await makeVersion(ROOT, slug);
       if (r.status === 201) console.log(`made ${r.path} (v${r.version}, from brands/${r.previous}/)`);

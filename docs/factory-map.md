@@ -8,7 +8,7 @@ worked with `--dir`. Standing rule: update this file after every factory upgrade
 MOTION DESIGN/
   README.md                 # for a new person: requirements, setup, how to use
   .gitignore                # brands/* (except _template) and _raw/* (except the template) stay out of git
-  CLAUDE.md                 # studio rules: render contract, look, motion, sound, gates
+  AGENTS.md                 # studio rules: render contract, look, motion, sound, gates
   lib/
     motion.js               # springs, track, indicator, swapAlpha, rng, presets (browser-only)
     hand.js                 # hand-drawn SVG ink: trace(), boil(), ink(), strokeLine()
@@ -16,14 +16,15 @@ MOTION DESIGN/
     serve.mjs               # static server; serves --dir, falls back to engine root for /lib/*
     holds.mjs               # pop + dead-hold analysis (pure; used by holds.mjs)
     texture.js              # grain (seeded tiles, pure in t) + vignette for flat colour
-    transitions.js          # flood / drain / coverRadius / fitText: an object becomes the next scene
+    transitions.js          # flood / drain / wipe / blinds / dissolve / coverRadius / fitText: an object becomes the next scene
     layout.js               # named anchors through the canvas transform, prepare/at, wrap + spans, frameExtents (bleed)
-    cursor.js               # cursorAt(): cursor driven by anchors, lands early and at rest; ring()
+    cursor.js               # cursorAt(): cursor driven by anchors, lands early and at rest; ring() + ripple()
     type.js                 # odometer with carry, drawOdometer, swapText (one spring, one clip)
-    checks.mjs              # geometry rules over anchors (pure; used by check.mjs)
+    checks.mjs              # geometry + choreo-easing rules over anchors (pure; used by check.mjs)
     gate.mjs                # check results + film fingerprint; primary-render review state; what blocks a full render
     package.json            # {"type":"module"}: Node reads lib/*.js as ES modules (tests); browsers ignore it
     *.test.mjs              # holds, layout/cursor/checks, type/hinge (part of `npm test`)
+  opencode.json             # OpenCode in this folder: film agents' model + variant "high" (Claude's --effort high is in studio/terminal.mjs)
   package.json              # deps (node-pty, ws, xterm, playwright), `npm run studio`, `npm test`; Node >= 20
   studio.mjs                # web UI server: `npm run studio` → 127.0.0.1:4321. Briefs → _raw/<slug>.md, Start film,
                             # gates + approvals, agent terminals (websocket), Library media. Endpoint list in its header
@@ -31,9 +32,11 @@ MOTION DESIGN/
     index.html, app.mjs     # UI: Home (#/: needs you, running, recent, briefs; navbar badge + alerts),
                             # brief editor (#/brief/<slug>), film gates (#/film/<slug>), agent terminal (#/run/<slug>),
                             # Agents (#/agents), Film Library (#/library, #/library/<slug>)
+                            # run page: Resume (terminal/history), version links, Shift+Enter newline
     library.mjs             # Library: finished films per brand, versions folded in (finalize's naming), ffprobe metadata,
                             # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4, silent_*.mp4)
     md.mjs                  # markdown → HTML (escaped) for the shotlist panel
+    transcript.mjs          # readable agent transcript: Claude sessions from ~/.claude/projects/<cwd>/<id>.jsonl, else terminal.log
     brief.mjs               # template ⇄ form model: parse / serialize / readBack / filmSettings (shared with tests)
     films.mjs               # Start film (scaffold brands/<slug>/ from _template), gate status from files,
                             # shotlist + primary-render approvals → brands/<slug>/docs/approvals.json (sha256 of the
@@ -92,7 +95,7 @@ MOTION DESIGN/
                             # has docs/previous-version.md; earlier versions are read-only once delivered
     quantoxt/               # first film (FROZEN — do not modify): index.html, assets/,
                             # docs/, beats.json, music.mjs, out/ (quantoxt-vertical-1080x1920.mp4 et al.)
-  .claude/skills/motion-reel/SKILL.md  # the factory door: one-sentence entry
+  .agents/skills/motion-reel/SKILL.md  # the factory door: one-sentence entry
   eye/                          # a visual model's reports on the refs and our films (research input; film agents never read it)
   lab/                          # reverse-pipeline lab (isolated): README, tokens.md (schema),
                                 # analyze.mjs (video → measurements + token draft), refs/<name>/

@@ -5,8 +5,8 @@
 - Each film lives in `brands/<name>/`: its `index.html`, `assets/`, `docs/shotlist.md`,
   `beats.json`, score/SFX sources, and `out/`.
 - New job: copy `brands/_template/` → `brands/<name>/`, work only inside it.
-- **Film agents never write to the engine.** Root scripts, `lib/`, `studio/`, `brands/_template/`, `CLAUDE.md` and
-  `.claude/` are read-only to you, even for a one-line fix, even if the bug blocks you. Another film may be mid-render on
+- **Film agents never write to the engine.** Root scripts, `lib/`, `studio/`, `brands/_template/`, `AGENTS.md` and
+  `.agents/` are read-only to you, even for a one-line fix, even if the bug blocks you. Another film may be mid-render on
   that code. Found an engine bug? Log it in `docs/bug-docs.md` (symptom, cause, proposed fix, marked `open`), work
   around it inside your brand folder, and say so in your review log. Engine fixes are made by hand, outside film runs.
 - All scripts take `--dir brands/<name>` (outputs land in that folder's `out/`).

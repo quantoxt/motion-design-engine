@@ -11,7 +11,7 @@ How to read this file: **eye** = visual judgment (like a token `statement`, not 
 
 | Finding | Lab | Eye | Status |
 |---|---|---|---|
-| Scenes are born from the one before (flood, shrink, morph), no plain cuts | rule 5 (all six) | reason 1, "the object becomes the world" | in the factory: `lib/transitions.js`, CLAUDE.md |
+| Scenes are born from the one before (flood, shrink, morph), no plain cuts | rule 5 (all six) | reason 1, "the object becomes the world" | in the factory: `lib/transitions.js`, AGENTS.md |
 | One motif carries continuity, never covers words | rule 1 | reason 1 + "shrink before the burst" | already a factory rule |
 | Full-screen type is a scene, not a caption | rule 4 | reason 3 + "huge type gets a tiny companion" | in the factory: 2–3 per film, `fitText` |
 | Our films stop moving | rule 2 (holds) | reason 4–5 (slow pace, long stills) | in the factory: quiet-stretch gate (below) |

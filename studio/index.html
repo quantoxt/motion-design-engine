@@ -119,6 +119,8 @@ a.button.primary:hover { background: #2E23C2; color: #fff; }
 /* Agent page: the terminal takes the whole viewport beside the gate rail. */
 .page.run { max-width: none; height: 100vh; display: flex; flex-direction: column; padding: 24px clamp(16px, 3vw, 40px); box-sizing: border-box; }
 .run-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.run-head .versions { margin: 6px 0 0; color: var(--soft); }
+.run-head .versions b, .run-head .versions a { margin-inline: 2px; }
 .run-head h1 { margin: 0; font-weight: 300; font-variation-settings: "opsz" 96; font-size: clamp(1.8rem, 3.5vw, 2.6rem); line-height: 1; letter-spacing: -0.02em; }
 .run-box { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; }
 .run-box .agent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -379,7 +381,7 @@ html { scroll-behavior: smooth; }
   <div class="where" id="where" aria-live="polite">Name the brand to save.</div>
   <span class="count" id="count"></span>
   <button class="quiet" id="clear" type="button">Clear form</button>
-  <button class="quiet" id="film" type="button" hidden>Start film</button>
+  <button id="film" type="button" hidden>Start film</button>
   <button class="primary" id="save" type="button" disabled>Save brief</button>
 </div>
 <script type="module" src="app.mjs"></script>

@@ -133,7 +133,7 @@ on a phone. The first version's card UI (32–40px) was too small, and the scale
 ## 6. Process
 
 - The gates worked: assets → shotlist + questions → OK → code → critique loop. The shotlist question round changed the hero stat.
-- Project `CLAUDE.md` changed mid-session (new Motion rules: no overshoot on type, transitions must be physical).
+- Project `AGENTS.md` changed mid-session (new Motion rules: no overshoot on type, transitions must be physical).
   Re-read the rules when notified and check the existing plan against them.
 - 4 critique rounds were needed, not 3. Round 1 found structural bugs (odometer, scale), round 2 found pacing (dead
   frames), round 3 found transition collisions in strips, round 4 confirmed. Budget for that.

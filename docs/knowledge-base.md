@@ -15,10 +15,11 @@ Source: Movez 12-step course (x.com/i/article/2104216919033192746) + related tre
 ## Setup (10 min)
 - Runtime: Node 22+, ffmpeg, Python + numpy/librosa/soundfile.
 - `npm i -D playwright && npx playwright install chromium`
-- Optional skills: remotion-dev/skills, heygen-com/hyperframes, buildwithhanif/claude-animation-skill.
+- HyperFrames reference library: `docs/references/` (21 skills — animation rules, transitions catalog,
+  registry; mined for `wipe`/`blinds`/`dissolve`/`ripple`/`choreo-easing`, read directly, never installed).
 - Model: Opus 5.5, effort xhigh (new films) / max (flagship first-3s matters) / medium (small fixes).
 
-## Render contract (CLAUDE.md)
+## Render contract (AGENTS.md)
 - `window.seek(t)` pure function of time. No CSS transitions, no setTimeout, no rAF in render mode, no carried state.
 - Seeded noise only (mulberry32), never Math.random.
 - Encode H.264 yuv420p, CRF 16. Fonts ready before capture (`document.fonts.ready`).

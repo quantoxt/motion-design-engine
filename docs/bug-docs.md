@@ -9,6 +9,42 @@ Severity: **high** = breaks a real job · **med** = breaks a common option · **
 
 ---
 
+## 2026-10-08 · Studio UI fixes
+
+### S-006 · `studio.mjs` transcript (`/terminal/log`) · med
+- **Symptom:** "Read the transcript" showed only exit codes and a resume hint, nothing the agent did.
+- **Cause:** it was built from `terminal.log`, which holds a full-screen app's redraws; stripping escape codes and redraws leaves almost nothing.
+- **Fix:** `studio/transcript.mjs`: Claude sessions are read from Claude Code's own record (`~/.claude/projects/<cwd>/<session>.jsonl`): your messages, the agent's replies, one line per tool it ran, failed tools marked ✗. Resumed sessions show once. OpenCode/custom sessions fall back to the screen log.
+- **Verified:** tests (3); Unburn's transcript went from 5 lines to 243 readable lines.
+
+### S-005 · `studio/films.mjs` gates · med
+- **Symptom:** the rail stayed on gate 2 (Assets & style guide) for every film, even after final delivery.
+- **Cause:** the assets gate counted only files directly in `assets/`; agents put them in `assets/fonts/`, `assets/logo/`…, so it was never done and stayed "current".
+- **Fix:** count files in subfolders too (also for the new-version note's asset count).
+- **Verified:** narrative-nexus, -v2 and unburn now show assets done (unburn's current gate is Machine checks: its results are out of date with its final code).
+
+### S-004 · `studio/app.mjs` film page previews, `render.mjs` / `render-parallel.mjs` · med
+- **Symptom:** animatic and primary-render previews glitched and wouldn't play; the Library played fine.
+- **Cause:** the film page rebuilt its gate list every few seconds while the agent worked (and once a minute anyway), making a new `<video>` each time, so playback restarted. Renders also wrote moov at the end of the file (no `+faststart`), unlike finalize's masters.
+- **Fix:** preview `<video>` elements are kept across rebuilds (keyed by src); both renderers add `-movflags +faststart`.
+- **Verified:** scratch template 6.0–7.5s: serial and parallel framemd5 identical, moov before mdat in both.
+
+### S-003 · `studio/app.mjs` run page · med
+- **Symptom:** after stopping an agent (or a studio restart), the run page only offered Run again / Run agent, no Resume; a brand's v1 agent was unreachable from the brief once v2 existed.
+- **Cause:** the pane only knew the in-memory session; history (with resumable ids) was only on the Agents page. Brief rows link to the newest version only.
+- **Fix:** `GET /api/films/:slug/terminal/history`; the pane shows Resume for the newest resumable session. The run page lists the brand's versions (v1, v2…) as links.
+- **Verified:** endpoint returns unburn's history on a test server (port 4399, stopped after).
+
+### S-002 · `studio/app.mjs` terminal · low
+- **Symptom:** Shift+Enter in the terminal sent the message instead of a new line.
+- **Cause:** xterm.js sends a plain CR for Enter with or without Shift.
+- **Fix:** Shift+Enter sends ESC+CR (the newline Claude Code and OpenCode read).
+- **Verified:** not tested in a browser (no browser testing): needs your check.
+
+### S-001 · `studio/app.mjs` brief editor · low
+- **Symptom:** Save on an unchanged brief was enabled; saving rewrote the file and the film then asked for a new version. Start film had no border.
+- **Fix:** Save is disabled on an opened brief until something changes. Start film is a bordered button. The film page's agent status also updates now (it said "running" after the agent stopped).
+
 ## 2026-10-08 · Lessons follow-up
 
 ### F-002 · `render.mjs --out` · low

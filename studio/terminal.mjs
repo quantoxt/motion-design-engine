@@ -40,10 +40,14 @@ const PARENT_SESSION_ENV = ['CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE
 // `bash -lc` so quoting and env expansion work as typed. `<brief>` expands to the brief path;
 // without it the path is appended. Claude gets a session id we choose (so it can be resumed)
 // and the film's name; `resume` continues an earlier Claude session instead.
+// Film agents run at high effort, resumed ones too (effort is per session, not saved with the conversation).
+export const CLAUDE_EFFORT = 'high';
+// OpenCode has no effort flag: its model and variant ("high") are set in the factory's opencode.json (project config,
+// read because agents run from the factory root). OpenCode 2 ignores OPENCODE_CONFIG/_CONTENT, so it can't be per-session.
 export function command(runner, slug, custom, { agentSession, resume } = {}) {
-  const brief = `brands/${slug}/docs/brief.md`, prompt = `follow ${brief}`;
-  if (runner === 'claude' && resume) return { file: 'claude', args: ['--resume', resume], label: `claude --resume ${resume}` };
-  if (runner === 'claude') return { file: 'claude', args: ['--session-id', agentSession, '--name', slug, prompt], label: `claude "${prompt}"` };
+  const brief = `brands/${slug}/docs/brief.md`, prompt = `follow ${brief}`, effort = ['--effort', CLAUDE_EFFORT];
+  if (runner === 'claude' && resume) return { file: 'claude', args: ['--resume', resume, ...effort], label: `claude --resume ${resume} --effort ${CLAUDE_EFFORT}` };
+  if (runner === 'claude') return { file: 'claude', args: ['--session-id', agentSession, '--name', slug, ...effort, prompt], label: `claude --effort ${CLAUDE_EFFORT} "${prompt}"` };
   if (runner === 'opencode' && resume) return { file: 'opencode', args: ['--session', resume], label: `opencode --session ${resume}` };
   if (runner === 'opencode') return { file: 'opencode', args: ['--prompt', prompt], label: `opencode --prompt "${prompt}"` };
   if (runner === 'custom') {
