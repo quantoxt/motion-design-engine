@@ -6,6 +6,8 @@ import { spring, track, clamp, rng } from './lib/motion.js';
 import { createLayout, frameExtents } from './lib/layout.js';
 import { cursorAt, ring } from './lib/cursor.js';
 import { drawOdometer, swapText } from './lib/type.js';
+import { flood, covered, fitText } from './lib/transitions.js';
+import { grain, vignette } from './lib/texture.js';
 
 // Film manifest: dimensions, duration, beat grid. Renderers and shots.mjs read this.
 const film = await fetch('./film.json').then((r) => r.json());
@@ -35,7 +37,8 @@ const CLICKS = [{ t: 5.4, target: 'unlock' }];           // a click names its ta
 const SWAP = 5.4;                                        // "Unlock" → "Unlocked", on the click
 const COUNT = [[3.4, 120], [4.4, 150]];                  // coin balance rolls up
 window.EVENTS = { clicks: CLICKS, swaps: [SWAP] };
-window.TRANSFORMS = [[2.4, 3.2]];                        // [[from, to], …] folds, shrinks, morphs, turns
+const FLOOD = 6.4;                                       // the button grows into the next scene's background
+window.TRANSFORMS = [[2.4, 3.2], [FLOOD, FLOOD + 0.9]];  // [[from, to], …] folds, shrinks, morphs, turns, floods
 
 // ---- readiness: renderers await window.ready before the first seek ----
 window.ready = (async () => {
@@ -47,21 +50,23 @@ window.ready = (async () => {
 
 // ---- scenes: one object per shot, pure functions of t ----
 const BG = '#141413', INK = '#F0EEE6', ACCENT = '#D97757', CARD = '#1F1E1C', HAIR = '#3A3935';
-const exitUp = (t, t0) => -spring(t - t0, 120, 22) * EY * 2.4;   // all exits go the same way
+// Exits: a scene leaves by turning into the next one (shrink into the motif, flood, morph) or by sinking back
+// into the mask it rose from. Never by flying across the frame: the renderer's blur draws a fast fly-off as
+// separate see-through copies (check.mjs "streak").
 const SCENES = [
   { from: 0, to: 3.2, draw(t) {
       // Type: critically damped (no overshoot), revealed through a line mask — never a fade.
-      const s = spring(t + 0.15, 170, 26), size = 190, y = -100 + exitUp(t, 2.4);
+      const s = spring(t + 0.15, 170, 26), sink = spring(t - 2.4, 170, 26), size = 190, y = -100;   // rises, then sinks back
       g.save(); g.translate(0, y);
       g.beginPath(); g.rect(-EX, -size * 0.84, 2 * EX, size * 1.08); g.clip();
       g.fillStyle = INK; g.font = `700 ${size}px "Instrument Serif", serif`;
-      g.textAlign = 'center'; g.fillText('TITLE', 0, (1 - s) * size * 1.08);
+      g.textAlign = 'center'; g.fillText('TITLE', 0, (1 - s + sink) * size * 1.08);
       g.restore();
       // The accent bar is the motif: it becomes the card's top edge in the next scene.
       const grow = spring(t - 2.4, 150, 24), bw = 640 + (760 - 640) * grow;
       g.fillStyle = ACCENT; g.fillRect(-bw / 2 * s, 50 + (-260 - 50) * grow, bw * s, 18 - 12 * grow);
   }},
-  { from: 2.4, to: DUR, draw(t, T) {
+  { from: 2.4, to: FLOOD + 0.8, draw(t, T) {
       // The card grows down from the bar once the bar has arrived (scene 1 hands it over at 3.2):
       // nothing appears before the motif gets there. Entries overlap the title's exit.
       const open = spring(t - 0.8, 170, 26), cw = 760, ch = 520 * open, top = -260;
@@ -93,7 +98,32 @@ const SCENES = [
       swapText(g, 'Unlock', 'Unlocked', done, 0, by + 56, 40);
       g.restore();
   }},
-  // ... append one object per shot. Last frame must equal first (loop).
+  { from: FLOOD, to: DUR, draw(t) {
+      // The Unlock button (accent after the click) grows past every edge and becomes the background.
+      // Then one word fills the frame width (type as the scene), with a tiny line under it (big needs small).
+      const p = spring(t, 150, 24);
+      flood(g, p, F, 0, -260 + 380 + 42, ACCENT, 42);
+      if (!covered(p)) return;
+      grain(g, t, F); vignette(g, F);                     // a big flat colour gets texture, so it isn't a digital fill
+      const rise = spring(t - 0.45, 170, 26), w = F.width * 0.86;
+      g.save();
+      g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+      const size = fitText(g, 'Unlocked.', w, '700 {size}px "Instrument Serif", serif');
+      g.beginPath(); g.rect(-EX, -size * 0.8, 2 * EX, size * 1.05); g.clip();
+      g.fillStyle = BG;
+      L.text(g, 'hero', 'Unlocked.', 0, size * 0.2 + (1 - rise) * size * 1.05);
+      g.fillText('Unlocked.', 0, size * 0.2 + (1 - rise) * size * 1.05);
+      g.restore();
+      const sub = spring(t - 0.75, 170, 26);
+      if (sub > 0.01) {
+        g.save(); g.beginPath(); g.rect(-EX, size * 0.3, 2 * EX, 60); g.clip();
+        g.fillStyle = BG; g.font = '500 34px "Geist", sans-serif'; g.textAlign = 'center';
+        g.fillText('chapter 2 is yours', 0, size * 0.3 + 44 + (1 - sub) * 60);
+        g.restore();
+      }
+  }},
+  // ... append one object per shot. The last frame returns to the first frame's object and colour (the film
+  // loops and feels complete): e.g. drain() the flood back into the motif bar on BG.
 ];
 window.SCENES = SCENES;                                  // shots.mjs events steps through every handoff from this
 
@@ -107,7 +137,7 @@ function draw(t) {
   for (const s of SCENES) if (t >= s.from && t < s.to) { camera(); s.draw(t - s.from, t); }
 
   // Cursor: screen space, driven by the anchors (arrives early and at rest, see lib/cursor.js).
-  if (t > 3.6) {
+  if (t > 3.6 && t < FLOOD + 0.35) {                     // the cursor leaves with the scene it was in
     const c = cursorAt(t, L, CLICKS, { home: [W * 0.85, H * 0.95], from: 3.6 });
     g.setTransform(1, 0, 0, 1, 0, 0);
     for (const k of CLICKS) {

@@ -5,11 +5,14 @@ candidates for factory flow-back (a future explicit step — they change nothing
 
 ## Rules
 
+Cross-checked with an external visual read in `eye.md`: rules 1, 2, 4, 5 and the end card agree. It also found
+what this list missed (ghosting exits, colour flips on the bar, loud/quiet, pace measured as screen area).
+
 1. **A carried motif (4/6: v1 asterisk, v3/v4 red dot, v6 blue dot).** One small
    geometric shape in the accent color recurs across unrelated scenes. It does the
    continuity work that cuts would otherwise break. NN's quill qualifies — but it
    covered words (v5/v6: the motif never obscures information).
-2. **No dead holds (v1, v3, v6: zero; v2/v5: continuous takes).** Mean shot
+2. **Near-zero dead holds (v1, v6: zero; v2 continuous take; v3/v4/v5: one each).** Mean shot
    1.2–1.5s in the cut films. NN shipped 8 holds >1s. This is the sharpest
    measured gap between the references and our film.
 3. **End on the static wordmark (v1, v3, v4).** After maximum density, a still
@@ -39,6 +42,7 @@ candidates for factory flow-back (a future explicit step — they change nothing
 
 - A frame-diff pop ≠ a cut: v5's floods trip the detector while reading as one
   take. Classify by strip, not by spike.
+- The 135px/region pipeline finds MORE true cuts than full-frame (v3's strobe montage verified on strips) and isolates exactly the documented hidden pops in NN-v1 (19.9, 24.0, 29.7, 30.0, 30.3). Resolution for cuts, regions for holds — as holds.mjs does.
 - Beat-phase is unreliable: v1's consistent −0.07s offset and identical BPMs
   across films need the onset cross-check before any sync token is trusted.
 

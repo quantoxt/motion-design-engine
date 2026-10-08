@@ -7,6 +7,60 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-08
 
+### Lab: eye cross-check
+- `lab/eye.md` (new): where the eye reports and the lab agree, what the eye saw that the lab missed (ghosting exits,
+  colour flips, loud/quiet, viewfinder, patterns, speed effects), the pace table for all 10 videos, open questions.
+  `lab/README.md` and `lab/findings.md` point to it. The lab's own measured `report.md` is unchanged.
+
+### From the eye reports, part 2
+- **`lib/texture.js`** (new): `grain` (seeded tiles, re-seeds 12×/s, parallel-safe) and `vignette`, for floods and
+  full-screen colour. The template's flood uses both.
+- `render.mjs`: relative `--out` now lands inside `--dir`, like the parallel renderer (F-002). Serial = parallel
+  byte-identical on the template's grain flood.
+- CLAUDE.md: the last frame returns to the first frame's object and colour; full-screen flat colour gets grain +
+  vignette.
+
+### From the lab reports
+- CLAUDE.md: the end card comes straight after the busiest moment (no slowing down before the logo), and a click
+  visibly changes the thing it touches first. The rest of the lab's findings were already covered.
+
+### From the eye reports (`eye/`, a visual model's frame-by-frame read of the refs and our films)
+The reports said why our films feel soft next to the references; the measures below confirm it before acting.
+- **Exits smeared into copies.** Scenes flew off fast, and with 4 blur snapshots per frame a fast move draws as
+  3–4 see-through copies (Unburn 7.7s). `check.mjs` has a new `streak` failure: an anchor moving more than 24px
+  between blur snapshots (scaled to 1080), grouped into one line per exit. Scratch Unburn: 6 exits flagged
+  (3.7, 7.7, 13.7, 14.0, 23.7, 25.7), including the one in the report's frame strip. Uses film.json `fps`/`sub`.
+- **`lib/transitions.js`** (new): `flood` (an object grows past every frame edge and becomes the background),
+  `drain` (the reverse), `covered`, `coverRadius`, `fitText` (one word, edge to edge).
+- **Template:** `exitUp` removed. The title sinks back into the line it rose from; a new scene shows the Unlock
+  button flooding the frame, then one full-screen word with a tiny line under it. Passes `check.mjs` in all formats.
+- **Pace measured as screen area, not just "anything moved".** `lib/holds.mjs` `pace()`: share of a 34px grid that
+  changes, rolling 1s median. `holds.mjs` fails a quiet stretch (≤1% of the screen moving) over 3s (`--quiet`,
+  film.json `"quiet"` for a calm brief) and prints how much of the film moves. Calibrated on the lab videos: crisp
+  refs v1/v4/v5 61–74% moving, longest quiet 1.6–2.7s; our films 12–37%, 4.6–9.3s (Unburn 12%, 9.3s).
+  Calm refs v2/v6 would fail at 3s (4.2/4.8s): that's the "Calm and spacious" brief option.
+- **Planned holds capped at 2s** (film.json `holds`), end card included.
+- **Rules:** CLAUDE.md pace (a change every beat, a big one every bar), loud/quiet/loud, 2–3 full-screen type
+  moments, exits turn into the next scene, background floods may rotate 4–5 colours when briefed, viewfinder layer
+  allowed when briefed. Film agents never read `eye/` or `lab/`. Critique prompt and knowledge base updated.
+- **Brief template:** Full-screen type (2–3), Scene changes (flood / one background), Background colours for floods,
+  Viewfinder layer, "Calm and spacious" allows 5s quiet. Skill: shotlist marks loud/quiet and the scene change per bar.
+
+
+### Lab: planned holds no longer counted (lab agent's change, logged here)
+- `lab/analyze.mjs --film-json brands/<x>/film.json` drops the film's planned holds from the count. NN-v2 went from
+  "2 holds" to 1 (the end still was planned). `lab/report.md` and `lab/ours/nn-v2/analysis/tokens.md` updated.
+- Open: the lab still finds holds with the whole-frame signal only, at full size. The engine's `holds.mjs` also
+  watches regions, so a small moving thing counts as motion. On NN-v2's final render the engine finds 0 holds and
+  0 pops; the lab's remaining 5.4–6.6 hold is likely that difference, not a real still. The lab's "pops" are its
+  cut list, not errors.
+- Who logs lab changes: the lab never writes factory docs, so its changes are logged here by hand.
+- Follow-up (done): `lab/analyze.mjs` now uses the same method as `holds.mjs` (135px scdet for cuts, 34px region
+  motion for holds), and the report says "cuts" instead of "pops". NN-v2 now reads 0 holds and 0 cuts, the same as
+  `holds.mjs`; the 5.4–6.6 "hold" was the quill and cursor moving. NN-v1 re-measured at 12 holds and 5 hard cuts. `lab/report.md` text now matches its tables (ten videos;
+  NN-v1 mean shot dropped as not comparable; NN-v1's 5 cuts all near a sound; Quantoxt has 1 real unplanned slow
+  moment at 13.4–16.0, since Quantoxt has no film.json to list planned holds).
+
 ### Rule: film agents never write to the engine
 - CLAUDE.md, the skill, the brief template and `docs/bug-docs.md` now say it outright: root scripts, `lib/`, `studio/`,
   `brands/_template/`, `CLAUDE.md` and `.claude/` are read-only during a film run. Engine bugs are logged `open` with a
@@ -52,6 +106,20 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
   measurements flagged where unverified: shared BPMs, −0.07s beat-phase offset)
   + `lab/findings.md` (5 cross-video rules, tool lessons, NN comparison preview
   clearly marked as NOT lab output yet).
+- Onset cross-check + comparison run: `sync` now reports cut↔beat AND cut↔onset
+  (librosa grids phase-shift; onsets are the honest signal). `lab/ours/`
+  measures our masters via symlink (lab writes only into `lab/ours/`).
+  `lab/report.md`: the full comparison — NN's 9 holds vs refs' 0, sync/loudness
+  cleared as non-issues, and the corollary that Quantoxt outscores NN on lab axes.
+- Shot-recreation proposal saved in `lab/report.md` (v1 flood first, ~3–4h,
+  reward = `flood()` in `lib/`); not started — awaiting audit + your call.
+- Reviewer audit fixes: analyzer takes `--film-json` (planned holds excluded —
+  NN-v2 now shows the 1 real open hold, 5.4–6.6), tokens.md is write-once
+  (re-runs no longer clobber agent judgments), brief template gains lab rules
+  (full-screen type scenes, motif, the one swing). 53/53 tests green.
+- Comparison run: `lab/ours/{nn-v2,unburn}/` measured + `lab/report.md` updated —
+  NN-v2 26→2 cuts then 0 cuts/0 holds (region pipeline = holds.mjs); Unburn 0/0 with full-frame type scenes. Verdict:
+  the factory removed defect classes without removing ambition.
 
 ### Fixed: brief editor counted 9 of 10 at most
 - Section 10 (Gates) has no fields, so it never counted as started. Field-less sections now count as complete

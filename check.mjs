@@ -45,9 +45,9 @@ try {
     const times = [...grid.map((t) => ({ t, grid: true })), ...extra.map((t) => ({ t, grid: false }))];
     const frames = await page.evaluate((times) => times.map(({ t, grid }) => {
       window.seek(t);
-      return { t, grid, anchors: window.LAYOUT.live().map(({ name, x, y, w, h, parent, bleed, solid }) => ({ name, x, y, w, h, parent, bleed, solid })) };
+      return { t, grid, anchors: window.LAYOUT.live().map(({ name, x, y, w, h, cx, cy, parent, bleed, solid }) => ({ name, x, y, w, h, cx, cy, parent, bleed, solid })) };
     }), times);
-    const failures = check(frames, { clicks: meta.clicks, frame: { w, h }, fps: FPS });
+    const failures = check(frames, { clicks: meta.clicks, frame: { w, h }, fps: FPS, blur: { fps: film.fps ?? 60, sub: film.sub ?? 4 } });
     for (const e of errors) failures.unshift({ kind: 'page-error', t: null, msg: e });
     const anchored = new Set(frames.flatMap((f) => f.anchors.map((a) => a.name))).size;
     report.formats[name] = { w, h, anchors: anchored, clicks: meta.clicks.length, failures };

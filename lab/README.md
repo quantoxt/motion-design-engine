@@ -18,6 +18,13 @@ reasons), not a copy. Plan: `docs/reverse-pipeline-plan.md`.
 ```
 lab/
   README.md            # this file
+  tokens.md            # what a token is (schema: name/kind/measurement/evidence/statement/refs)
+  analyze.mjs          # video → measurements + token draft (statements EMPTY for the agent)
+  findings.md          # cross-video rules (3+ refs), tool lessons
+  eye.md               # cross-check with an external visual model's frame-by-frame read (eye/), + pace numbers
+  report.md            # lab-vs-ours comparison: why the refs are crisper
+  ours/<name>/         # our masters measured with the same tool (source.mp4 is a
+                       # symlink into brands/; lab writes only into ours/<name>/analysis/)
   refs/<name>/         # one folder per reference video (GITIGNORED)
     source.mp4         # the video
     prompt.md          # the prompt that made it (if known)

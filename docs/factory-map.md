@@ -15,6 +15,8 @@ MOTION DESIGN/
     project.js              # fake-3D: rot/iso/cube/drawCube/turntable/parallax, hingeQuad/drawHinged (turn on a real edge)
     serve.mjs               # static server; serves --dir, falls back to engine root for /lib/*
     holds.mjs               # pop + dead-hold analysis (pure; used by holds.mjs)
+    texture.js              # grain (seeded tiles, pure in t) + vignette for flat colour
+    transitions.js          # flood / drain / coverRadius / fitText: an object becomes the next scene
     layout.js               # named anchors through the canvas transform, prepare/at, wrap + spans, frameExtents (bleed)
     cursor.js               # cursorAt(): cursor driven by anchors, lands early and at rest; ring()
     type.js                 # odometer with carry, drawOdometer, swapText (one spring, one clip)
@@ -91,9 +93,13 @@ MOTION DESIGN/
     quantoxt/               # first film (FROZEN — do not modify): index.html, assets/,
                             # docs/, beats.json, music.mjs, out/ (quantoxt-vertical-1080x1920.mp4 et al.)
   .claude/skills/motion-reel/SKILL.md  # the factory door: one-sentence entry
-  lab/                          # reverse-pipeline lab (isolated): README, refs/<name>/ per
-                                # reference (gitignored: source.mp4 + prompt.md + meta.md),
-                                # analysis/ output. Imports engine read-only, never writes outside lab/
+  eye/                          # a visual model's reports on the refs and our films (research input; film agents never read it)
+  lab/                          # reverse-pipeline lab (isolated): README, tokens.md (schema),
+                                # analyze.mjs (video → measurements + token draft), refs/<name>/
+                                # per reference (gitignored) + ours/<name>/ for our masters
+                                # (symlinked source; lab writes only into analysis/), findings.md
+                                # (cross-video rules), report.md (lab-vs-ours comparison).
+                                # Imports engine read-only, never writes outside lab/
 ```
 
 ## Conventions

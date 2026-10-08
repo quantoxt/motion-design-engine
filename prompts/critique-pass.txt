@@ -2,10 +2,12 @@ Open out/contact.png, out/strip.png and out/phone.png and look at them properly.
 Be a harsh motion director, not a proud author.
 
 Score 1-10: hook in first 2s · readability at phone size · motion quality (springs,
-no dead frames) · variety (new thing every 2-4s) · composition · brand accuracy · sound sync.
+no dead frames, no exit smearing into copies) · variety (a change every beat, a big one every bar,
+loud/quiet alternating, 2–3 full-screen type moments) · composition · brand accuracy · sound sync.
 
 List the 3 biggest problems with timestamps. Hunt specifically for: text overlapping during
-swaps, anything sliding instead of easing, corner labels and frame borders, centered-on-gradient
+swaps, anything sliding instead of easing, a scene flying off instead of turning into the next one,
+decorative corner labels and frame borders (unless the brief asked for a viewfinder layer), centered-on-gradient
 shots, blurry scaled text, a dead beat with nothing happening, a stutter at the loop seam.
 
 Fix them, re-render only the affected seconds, show me the new contact sheet and new scores.

@@ -36,7 +36,8 @@ Every film lives in its own `brands/<name>/` folder. Never mix brand files into 
 4. **Music grid first.** Synthesize or measure the track, write `beats.json`,
    verify with onsets. Every cut locks to this grid. Record dims/duration/bpm
    in `film.json` (renderers and stills read it — no hardcoded sizes).
-5. **Shotlist.** Write `docs/shotlist.md` on the beat grid, surface brief-vs-site
+5. **Shotlist.** Write `docs/shotlist.md` on the beat grid, with a loud/quiet mark and the scene-change
+   type (flood, shrink, morph, mask) for every bar, surface brief-vs-site
    conflicts as questions, check every UI action a beat shows exists in the real product (grep the source), and WAIT for user OK before code.
    The OK is either an explicit "approved" in chat, or a studio approval:
    `docs/approvals.json` → `shotlist.sha256` must equal `sha256sum docs/shotlist.md`.

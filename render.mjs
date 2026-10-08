@@ -11,7 +11,11 @@ const sarg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 
 const DIR = resolve(sarg('dir', '.'));
 const film = existsSync(join(DIR, 'film.json')) ? JSON.parse(readFileSync(join(DIR, 'film.json'), 'utf8')) : {};
 const FPS = arg('fps', film.fps ?? 60), DUR = arg('dur', film.dur ?? 15), SUB = arg('sub', film.sub ?? 4), FROM = arg('from', 0);
-const W = arg('w', film.w ?? 1080), H = arg('h', film.h ?? 1920), OUT = sarg('out', join(DIR, 'out/silent.mp4'));
+const W = arg('w', film.w ?? 1080), H = arg('h', film.h ?? 1920), OUT = (() => {
+  // A relative --out is inside --dir (like the default), unless it already names a path under it from the cwd (as render-parallel.mjs).
+  const o = sarg('out', '');
+  return !o ? join(DIR, 'out/silent.mp4') : resolve(o).startsWith(DIR + '/') ? resolve(o) : resolve(DIR, o);
+})();
 mkdirSync(join(DIR, 'out'), { recursive: true });
 
 const srv = await serve(DIR, [dirname(fileURLToPath(import.meta.url))]);

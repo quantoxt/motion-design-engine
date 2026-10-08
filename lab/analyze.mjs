@@ -1,6 +1,6 @@
 // Lab analyzer: reference video → measurements + token draft (measurements only).
 // NEVER writes outside lab/refs/<name>/analysis/. Imports engine read-only.
-// Usage: node lab/analyze.mjs lab/refs/v1 [--tick 0]
+// Usage: node lab/analyze.mjs lab/refs/v1 [--tick 0] [--film-json brands/<x>/film.json]
 //
 // Output: meta.json, mafd.txt, cuts.json, contact.png, shots/*.png,
 //   strips/*.png, beats.json, loudness.json, sync.json, tokens.md (measurements
@@ -8,12 +8,16 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { analyze, parseMafd } from '../lib/holds.mjs';
+import { analyze, parseMafd, regionMax } from '../lib/holds.mjs';
+import { execFileSync } from 'node:child_process';
 
 const ref = process.argv[2];
 if (!ref) { console.error('usage: node lab/analyze.mjs lab/refs/<name> [--tick 0]'); process.exit(2); }
 const tickArg = process.argv.find((a) => a.startsWith('--tick'));
 const tick = tickArg ? Number(tickArg.split('=')[1] ?? process.argv[process.argv.indexOf(tickArg) + 1]) : 0;
+const filmArg = process.argv.find((a) => a.startsWith('--film-json'));
+const filmJson = filmArg ? JSON.parse(readFileSync(filmArg.split('=')[1] ?? process.argv[process.argv.indexOf(filmArg) + 1], 'utf8')) : {};
+const allowed = filmJson.holds ?? [];
 const SRC = join(ref, 'source.mp4');
 const OUT = join(ref, 'analysis');
 mkdirSync(join(OUT, 'shots'), { recursive: true });
@@ -39,11 +43,21 @@ const hasAudio = probe(['-select_streams', 'a', '-show_entries', 'stream=codec_n
 const meta = { w: +w, h: +h, fps: +fps.toFixed(3), dur: +dur.toFixed(3), frames: Math.round(dur * fps), hasAudio };
 writeFileSync(join(OUT, 'meta.json'), JSON.stringify(meta, null, 1) + '\n');
 
-// 2. Frame differences (same signal holds.mjs uses; tick=0: references have no 12fps grain)
-run(['-i', SRC, '-vf', `scdet,metadata=print:file=${join(OUT, 'mafd.txt')}`, '-f', 'null', '-'], 'mafd');
+// 2. Frame differences — EXACTLY the holds.mjs pipeline (reviewer ruling):
+// pops: whole-frame scdet at 135px wide (area-averaging kills grain);
+// holds: largest regional change on a 34px gray grid (a small moving cursor still counts).
+// Whole-frame mafd on full-size video reads small motion as holds — wrong. Don't "improve" this.
+run(['-i', SRC, '-vf', `scale=135:-2:flags=area,scdet,metadata=print:file=${join(OUT, 'mafd.txt')}`, '-f', 'null', '-'], 'mafd');
 import { readFileSync } from 'node:fs';
 const mafd = parseMafd(readFileSync(join(OUT, 'mafd.txt'), 'utf8'));
-const { pops, holds } = analyze(mafd, { fps, tick, hold: 1 });
+const RW = 34, RH = Math.max(2, Math.round(meta.h * RW / meta.w / 2) * 2);
+const raw = execFileSync('ffmpeg', ['-v', 'error', '-i', SRC, '-vf', `scale=${RW}:${RH}:flags=area,format=gray`, '-f', 'rawvideo', '-'], { maxBuffer: 1 << 30 });
+const motion = regionMax(raw, RW, RH);
+let { pops, holds } = analyze(mafd, { fps, tick, hold: 1, motion, eps: 8, allowed });
+pops = pops.filter((q) => !(filmJson.pops ?? []).some((c) => Math.abs(c - q.t) <= 0.05));
+// Planned holds (film.json "holds") are already cut out of `holds` by analyze().
+// Anything remaining is unplanned. Report both counts honestly.
+const plannedCount = allowed.length;
 const cuts = pops.map((p) => +p.t.toFixed(3));
 const shots = [0, ...cuts, dur].map((t, i, a) => i < a.length - 1 ? { start: +t.toFixed(3), end: +a[i + 1].toFixed(3), len: +(a[i + 1] - t).toFixed(3) } : null).filter(Boolean);
 writeFileSync(join(OUT, 'cuts.json'), JSON.stringify({ cuts, shots, holds }, null, 1) + '\n');
@@ -71,30 +85,35 @@ if (hasAudio) {
   if (m) { loudness = { integrated_lufs: +m[1], true_peak_dbfs: +m[2] }; writeFileSync(join(OUT, 'loudness.json'), JSON.stringify(loudness, null, 1) + '\n'); }
 }
 
-// 5. Sync: each cut's offset to the nearest beat/onset (is it cut to the music?)
+// 5. Sync: each cut's offset to the nearest beat AND onset hit.
+// Lesson from refs: librosa beat grids phase-shift; cuts land on onsets.
+// The honest metric is hit_off; beat_off is reported for the record.
 let sync = null;
 if (beats?.beats?.length) {
-  const grid = beats.beats;
+  const hits = beats.hits ?? [];
+  const near = (t, grid) => grid.reduce((b, x) => Math.abs(x - t) < Math.abs(b - t) ? x : b, grid[0]);
   sync = cuts.map((t) => {
-    let best = grid[0], bd = Math.abs(t - grid[0]);
-    for (const b of grid) { const d = Math.abs(t - b); if (d < bd) { bd = d; best = b; } }
-    return { cut: t, nearest_beat: +best.toFixed(3), off_by: +(t - best).toFixed(3), on_beat: bd < 1 / fps + 0.02 };
+    const b = near(t, beats.beats);
+    const h = hits.length ? near(t, hits) : null;
+    return { cut: t, beat_off: +(t - b).toFixed(3), hit_off: h == null ? null : +(t - h).toFixed(3), on_event: h != null && Math.abs(t - h) < 1 / fps + 0.02 };
   });
   writeFileSync(join(OUT, 'sync.json'), JSON.stringify(sync, null, 1) + '\n');
 }
 
 // 6. Token draft: measurements filled, statements empty (agent's job per lab/tokens.md)
 const avgShot = shots.reduce((a, s) => a + s.len, 0) / shots.length;
-const onBeat = sync ? sync.filter((s) => s.on_beat).length : null;
+const onEvent = sync ? sync.filter((s) => s.on_event).length : null;
+if (!existsSync(join(OUT, 'tokens.md'))) {
 writeFileSync(join(OUT, 'tokens.md'), `# Tokens: ${ref.split('/').pop()}\n\n` +
   `> Measurements from analyze.mjs. Statements are EMPTY until the agent studies the evidence (lab/tokens.md).\n\n` +
   `## Measured\n` +
   `- duration ${dur.toFixed(1)}s, ${shots.length} shots, mean shot ${avgShot.toFixed(2)}s\n` +
   `- cuts at: ${cuts.join(', ') || 'none (one continuous take)'}\n` +
-  `- holds >1s: ${holds.length ? holds.map((x) => `${x.from.toFixed(1)}–${x.to.toFixed(1)}`).join(', ') : 'none'}\n` +
+  `- holds >1s unplanned: ${holds.length}${plannedCount ? ` (${plannedCount} planned hold(s) from film.json excluded)` : ''}${holds.length ? ': ' + holds.map((x) => `${x.from.toFixed(1)}–${x.to.toFixed(1)}`).join(', ') : ''}\n` +
   (beats ? `- tempo ${beats.bpm} BPM, ${beats.beats.length} beats\n` : `- no beat grid (beats.py failed or no audio)\n`) +
-  (sync ? `- cuts on beat: ${onBeat}/${sync.length}\n` : ``) +
+  (sync ? `- cuts on a sound event: ${onEvent}/${sync.length}\n` : ``) +
   (loudness ? `- loudness ${loudness.integrated_lufs} LUFS, peak ${loudness.true_peak_dbfs} dBFS\n` : ``) +
   `\n## Evidence\n- contact.png · shots/ (mid-shot each) · strips/ (13 frames per cut)\n\n## Tokens\n\n| name | kind | measurement | evidence | statement | refs |\n|---|---|---|---|---|---|\n| _(agent fills after studying evidence)_ | | | | | |\n`);
 
-console.log(JSON.stringify({ ref, shots: shots.length, cuts: cuts.length, holds: holds.length, bpm: beats?.bpm ?? null, onBeat, loudness }, null, 1));
+}
+console.log(JSON.stringify({ ref, shots: shots.length, cuts: cuts.length, holds: holds.length, bpm: beats?.bpm ?? null, onEvent, loudness }, null, 1));

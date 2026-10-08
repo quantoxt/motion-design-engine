@@ -11,6 +11,12 @@ Severity: **high** = breaks a real job · **med** = breaks a common option · **
 
 ## 2026-10-08 · Lessons follow-up
 
+### F-002 · `render.mjs --out` · low
+- **Symptom:** the serial renderer with `--out out/x.mp4 --dir <film>` failed ("Error opening output out/s.mp4"), then an EPIPE stack.
+- **Cause:** U-001 was fixed only in `render-parallel.mjs`; the serial reference still resolved `--out` against the cwd.
+- **Fix:** same rule as the parallel renderer: a relative `--out` lands inside `--dir`, unless it already points under it.
+- **Verified:** scratch template, 7.0–7.5s (flood with the new grain): serial and parallel framemd5 identical (`a688b6fd…`).
+
 ### F-001 · `render-parallel.mjs --scan --from/--dur`, `holds.mjs` · high
 - **Symptom:** checking a fix on a short window (`--scan --from 12 --dur 2`) overwrote the full `out/scan.mp4`, and a plain
   `holds.mjs` then scanned those 2 seconds as if they started at 0 and could write a passing `out/holds.json`: the render

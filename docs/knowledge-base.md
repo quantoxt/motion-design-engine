@@ -25,9 +25,9 @@ Source: Movez 12-step course (x.com/i/article/2104216919033192746) + related tre
 - Motion blur: render SUB=4 subframes/frame, blend with ffmpeg `tmix`.
 
 ## Look / anti-slop
-- Banned: centered title on gradient, everything fading in, corner labels/frame borders, glow on UI chrome, generic particle bursts, bouncy easing.
+- Banned: centered title on gradient, everything fading in, decorative corner labels/frame borders (a viewfinder layer only when the brief asks), glow on UI chrome, generic particle bursts, bouncy easing.
 - One display face + one UI face. One accent unless brief says otherwise.
-- New visual payoff every 2-4s. Hook in first 2s. Must read at 360px wide.
+- A change every beat, a big one every bar (scene, flood, full-screen word). Loud/quiet alternating. Scenes turn into the next one, never fly off. Hook in first 2s. Must read at 360px wide.
 
 ## Prompt patterns (ladder)
 1. **One-liner (test engine):** "dynamic 15s showreel for résumé, go all out" — genre sets rules, model is subject. Variants: 60s piano reel w/ original score, anti-slop guardrail (no corners), story not techniques, agency persona.

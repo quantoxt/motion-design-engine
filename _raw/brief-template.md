@@ -179,6 +179,25 @@ Use the **motion-reel** skill. Go all out.
 - [ ] Loops back to the hook
 - [ ] Agent decides
 
+**Full-screen type scenes** *(one word fills the frame width, one word per beat, a tiny line under it)*
+- [ ] 2–3 full-screen type moments
+- [ ] Type stays UI caption throughout
+- [ ] Agent decides
+
+**Scene changes**
+- [ ] The motif floods the frame: the background colour flips on the bar
+- [ ] One background: scenes shrink, morph or turn into the next object
+- [ ] Agent decides
+
+**Background colours for floods (up to 4–5, base first; blank = the agent picks from the brand):** ____
+
+**Viewfinder layer** *(corner brackets, timecode, bar counter, tiny labels fixed on top of everything)*
+- [ ] Yes
+- [ ] No
+- [ ] Agent decides
+
+**The one swing (the single boldest moment — the agent must attempt it, critique scores it):** ____
+
 ---
 
 ## 7. Look & feel
@@ -201,12 +220,14 @@ Use the **motion-reel** skill. Go all out.
 - [ ] Agent decides
 
 **Energy**
-- [ ] Calm and spacious
+- [ ] Calm and spacious (allows quiet stretches up to 5s)
 - [ ] Steady
 - [ ] Showreel-fast
 - [ ] Agent decides
 
 **Avoid (anything that would feel off-brand):** ____
+
+**Motif (lab rule: one shape in the accent color, recurring across scenes, never covering words):** ____
 
 ---
 

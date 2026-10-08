@@ -1,0 +1,32 @@
+[
+ {
+  "cut": 19.917,
+  "beat_off": 0.099,
+  "hit_off": -0.052,
+  "on_event": false
+ },
+ {
+  "cut": 24.017,
+  "beat_off": -0.004,
+  "hit_off": 0.008,
+  "on_event": true
+ },
+ {
+  "cut": 29.717,
+  "beat_off": 0.297,
+  "hit_off": -0.005,
+  "on_event": true
+ },
+ {
+  "cut": 30.017,
+  "beat_off": -0.006,
+  "hit_off": -0.006,
+  "on_event": true
+ },
+ {
+  "cut": 30.317,
+  "beat_off": 0.294,
+  "hit_off": -0.008,
+  "on_event": true
+ }
+]

@@ -36,10 +36,21 @@
 - Time 1s of film and multiply before quoting a render duration. Never estimate blind.
 
 ## Look
-- Banned defaults: centered title on gradient, everything fading in,
-  corner labels and frame borders, glow on UI chrome, generic particle bursts.
-- One display face, one UI face. One accent color unless the brief says otherwise.
-- Every 2 to 4 seconds something new must happen on screen.
+- Banned defaults: centered title on gradient, everything fading in, decorative corner labels and
+  frame borders, glow on UI chrome, generic particle bursts. (A viewfinder layer is allowed when the
+  brief ticks it: corner brackets, timecode, bar counter, tiny mono labels, fixed on top, never moving.)
+- One display face, one UI face. One accent color unless the brief says otherwise. Background floods
+  may rotate up to 4–5 flat colours when the brief asks for them (base colour is home; a shock colour
+  appears briefly). Each flip is the motif growing past the frame edges, on a bar line.
+- Pace: something changes on every beat, and a big change (scene, flood, full-screen word) on every bar.
+  Text still stays long enough to read at phone size. `holds.mjs` fails any stretch over 3s where
+  ≤1% of the screen moves (film.json `"quiet"` raises it only when the brief asks for a calm film).
+- Loud / quiet / loud: plan the shotlist as alternating beats. Loud = full-screen type, a pattern, a flood.
+  Quiet = one small object in empty space. 2–3 full-screen type moments per film (one word fills the
+  frame width, `fitText` from `lib/transitions.js`), each with a tiny companion line. Shrink before a burst.
+- The end card comes straight after the busiest moment: build to the fastest, loudest bar, then land on the
+  still logo (2s at most). Don't slow down before it. The last frame returns to the first frame's object and
+  colour, so the film feels complete and loops cleanly.
 - Convert brand oklch tokens → hex once with a script; don't eyeball. Very dark
   oklch values collapse to black — plan dark-mode contrast around borders, not fills.
 - Check logo resolution by content box (alpha bbox), not file size. Recoloring a
@@ -52,12 +63,16 @@
 - Every transition must be a physical transformation of an on-screen object —
   lines become paths, rays become diagrams. No meaningless hard cuts.
 - One motif object should carry transitions across the whole film.
-- All exits go the same direction. Overlapping text swaps must share one spring
+- Scenes leave by turning into the next one (`flood`/`drain` from `lib/transitions.js`, shrink into the
+  motif, morph) or by sinking back into the mask they rose from. Never by flying across the frame: the
+  renderer's blur draws a fast move as separate see-through copies. `check.mjs` reports it as `streak`
+  (>24px between blur snapshots). Fix by changing the exit, not by hiding it; raising film.json `sub`
+  (8–16) is the fallback for a move that must be fast. All exits that do travel go the same direction. Overlapping text swaps must share one spring
   (odometer grammar) so glyphs never share pixels: `swapText` / `drawOdometer`
   (carry included) from `lib/type.js`, never hand-rolled. Route every screen-space
   consumer through one mapping function (incl. camera) or elements drift.
 - Overlap entries with exits: start the next scene before the previous finishes.
-  Holds longer than ~1s need new content. Phone test: source ÷ 3 ≈ 360px wide;
+  Holds longer than ~1s need new content. A planned hold (film.json `holds`) is 2s at most, end card included. Phone test: source ÷ 3 ≈ 360px wide;
   body/UI text under ~40px source lands ≤13px on phone.
 - Hand-drawn SVG goes through `lib/hand.js` (Path2D + boil + pencil ink), never
   raster images of drawings. Fake-3D goes through `lib/project.js`
@@ -68,11 +83,14 @@
   `spans`, so annotations follow the words across line breaks. Never type a coordinate twice.
 - Clicks are `{ t, target }` and the cursor is `cursorAt()` from `lib/cursor.js`: it
   lands ≥0.4s before each click, inside the target, at rest. Anchor its tip as `'cursor'`.
+  The click visibly changes the thing it touches first (press, colour, label), then anything else follows from it.
 - A 3D turn pivots on the object's real hinge (`drawHinged`, a cover on its spine), and
   its far edge is where the next object starts. Nothing appears behind it before it gets there.
 - An entry starts from 0 (scale, mask or off-frame), never at full size.
 - The motif never covers the words it annotates, least of all in the 2s hook.
 - A state change must read at phone size in both states (give "before" a tint).
+- A full-screen flat colour (a flood, a colour scene) gets `grain` + `vignette` from `lib/texture.js`, so it
+  doesn't read as a digital fill.
 - Bleed elements (marquees, walls) are sized from the frame, not the content box:
   `frameExtents(W, H)` from `lib/layout.js` (`F.across(pad)`, `F.down(pad)`), anchored `{ bleed: true }`.
   An entry from below starts at `F.EY + its height`, not a fixed offset.
@@ -104,6 +122,7 @@
 - At the end of every run, write what it taught you to `brands/<name>/docs/lessons.md`
   (create or extend it; short measured rules, not a diary).
 - Never read or write `docs/LESSONS.md`. It is curated by hand.
+- Film agents never read `eye/` or `lab/`. They are research inputs to the factory, and what they taught is already in these rules. (The lab works inside `lab/` under its own README.)
 
 ## Loop before you show me anything
 1. Check by kind of bug, on the animatic, before any full render. Beat stills only
@@ -115,10 +134,11 @@
    - `render-parallel.mjs --scan` then `holds.mjs`: one-frame pops (hidden cuts,
      full-size entries, hard swaps) and holds >1s where only grain/boil moves. Look at `out/pops.png`
      (±3 frames per pop) before fixing. Check a fix on a window (`--scan --from 12 --dur 2`, then
-     `holds.mjs --file out/scan_12.00-14.00.mp4`); only the full `--scan` counts for the gate. Fix
+     `holds.mjs --file out/scan_12.00-14.00.mp4`); only the full `--scan` counts for the gate. It also fails
+     quiet stretches (>3s with ≤1% of the screen moving) and reports how much of the film moves (crisp: 60%+). Fix
      each, or list an intended hold in film.json `"holds"`. The animatic is too coarse for it.
    - Every format: `shots.mjs events --format all` and `shots.mjs at <hook> <densest> <end> --format all`.
-   - `check.mjs`: in every format, every click lands in its target with the cursor at rest,
+   - `check.mjs`: in every format, no fast move smears into copies (`streak`), every click lands in its target with the cursor at rest,
      no text overflows its parent, no two texts (or `{ solid: true }` anchors) collide, nothing sits cut by the frame edge.
    Re-check the encoded MP4 once at the end (blur + compression change the look).
 2. Score 1-10 on: hook in first 2s, readability at phone size,

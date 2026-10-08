@@ -4,6 +4,7 @@
 //   [--file out/x.mp4] [--from S]  file to scan; --from = film time of its first frame (read from a window scan's
 //   name, scan_<from>-<to>.mp4). To check a fix fast: --scan --from 12 --dur 2, then --file out/scan_12.00-14.00.mp4
 //   [--tick 12] grain/boil rate (0 = none) [--hold 1] [--eps 8 (region change, 0–255)] [--ratio 2.5] [--min 0.5]
+//   [--quiet 3] longest stretch with ≤1% of the screen moving (film.json "quiet" overrides; a deliberate calm style)
 // Allowed holds come from film.json "holds": [[58.2, 60]], intended hard cuts from "pops": [12.6] (±0.05s). Exit 0 = clean, 1 = findings, 2 = error.
 // Scanning the default out/scan.mp4 writes out/holds.json (the studio's "Machine checks" gate).
 // Pops found → out/pops.png: ±3 frames around each pop, so you see the cause without hand-made tiles.
@@ -12,7 +13,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, rmSync, statSync, mkdirSync, readdirSync, renameSync, copyFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { analyze, parseMafd, regionMax } from './lib/holds.mjs';
+import { analyze, parseMafd, regionMax, pace } from './lib/holds.mjs';
 import { writeResult } from './lib/gate.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? Number(process.argv[i + 1]) : d; };
@@ -47,6 +48,12 @@ try {
   r = analyze(mafd, { fps, from: FROM, tick: arg('tick', 12), hold: arg('hold', 1), motion, eps: arg('eps', 8),
     ratio: arg('ratio', 2.5), min: arg('min', 0.5), allowed: film.holds ?? [] });
 } catch (e) { fail(e.message); }
+// Pace: quiet stretches (≤1% of the screen moving for > --quiet s, default 3 or film.json "quiet") and the moving share.
+const QUIET = arg('quiet', film.quiet ?? 3);
+const p = pace(raw, RW, RH, fps, { from: FROM, eps: arg('eps', 8), quiet: QUIET, allowed: film.holds ?? [] });
+// Planned holds are capped: an end card may rest, the film may not.
+const MAXPLAN = 2;
+const longPlans = (film.holds ?? []).filter(([a, b]) => b - a > MAXPLAN + 1e-6);
 const cuts = film.pops ?? [];
 r.pops = r.pops.filter((p) => !cuts.some((c) => Math.abs(c - p.t) <= 0.05));
 
@@ -78,10 +85,14 @@ if (r.pops.length) {
   console.log(`
 Pop frames: ${SHEET} (one row per pop, ±${K} frames, centre = the pop)`);
 }
-const ok = !r.pops.length && !r.holds.length;
-const params = Object.fromEntries(['tick', 'hold', 'eps', 'ratio', 'min'].map((k) => [k, arg(k, undefined)]).filter(([, v]) => v != null));
+console.log(p.quiet.length ? `\nQuiet stretches over ${QUIET}s (${p.quiet.length}): under 1% of the screen moves. Add a beat (a big change every bar, a small one every beat)` : `\nQuiet stretches: none over ${QUIET}s`);
+for (const q of p.quiet) console.log(`  ${q.from.toFixed(2)}–${q.to.toFixed(2)}s  (${q.dur}s)`);
+for (const [a, b] of longPlans) console.log(`\nPlanned hold ${a}–${b}s in film.json is ${(b - a).toFixed(1)}s: planned holds are capped at ${MAXPLAN}s`);
+console.log(`\nMoving: ${Math.round(p.moving * 100)}% of frames (crisp references: 61–74%)`);
+const ok = !r.pops.length && !r.holds.length && !p.quiet.length && !longPlans.length;
+const params = Object.fromEntries(['tick', 'hold', 'eps', 'ratio', 'min', 'quiet'].map((k) => [k, arg(k, undefined)]).filter(([, v]) => v != null));
 // Only a scan of the whole film counts for the gate: out/scan.mp4, starting at 0, as long as film.json says.
 const GATE = FILE === join(DIR, 'out', 'scan.mp4') && FROM === 0 && (!film.dur || Math.abs(mafd.length / fps - film.dur) < 2 / fps);
 if (!GATE) console.log(`\n(Not the full-film scan, so out/holds.json is unchanged: the render gate needs node render-parallel.mjs --dir ${sarg('dir', '.')} --scan.)`);
-if (GATE) writeResult(DIR, 'holds', { ok, fps, frames: mafd.length, params, ...r });   // changed thresholds stay visible
+if (GATE) writeResult(DIR, 'holds', { ok, fps, frames: mafd.length, params, ...r, quiet: p.quiet, moving: p.moving, longPlans });   // changed thresholds stay visible
 process.exit(ok ? 0 : 1);
