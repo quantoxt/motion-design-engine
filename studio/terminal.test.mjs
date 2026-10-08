@@ -198,3 +198,26 @@ test('OpenCode: the session is found after the first message and bound to the ri
   assert.deepEqual(spawned.at(-1).args, ['--session', 'ses_a']);
   spawned[1].exit(0); spawned.at(-1).exit(0);
 });
+
+test('guard: a fresh run on a job with work needs { confirm: true }; blocked jobs never start; Resume skips it', () => {
+  const { spawn, spawned } = fakeSpawn();
+  let backedUp = 0;
+  const guard = (slug, history) => (slug === 'beta' ? { block: true, message: 'delivered' }
+    : { message: `has work (${history.length})`, note: 'Continue from the first unfinished gate.', before: () => { backedUp++; } });
+  const r2 = mkdtempSync(join(tmpdir(), 'studio-guard-'));
+  for (const s of ['acme', 'beta']) mkdirSync(join(r2, 'brands', s, 'out'), { recursive: true });
+  const t = createTerminals({ root: r2, spawn, guard, opencode: noOpencode });
+  const ask = t.start('acme', { runner: 'claude' });
+  assert.deepEqual([ask.status, ask.confirm, spawned.length, backedUp], [409, true, 0, 0], 'asks, starts nothing, backs up nothing');
+  assert.equal(t.start('acme', { runner: 'claude', confirm: 'yes' }).status, 409, 'only a literal true confirms');
+  const ok = t.start('acme', { runner: 'claude', confirm: true });
+  assert.equal(ok.status, 201); assert.equal(backedUp, 1);
+  assert.match(spawned[0].args.at(-1), /^follow brands\/acme\/docs\/brief\.md\. Continue from the first unfinished gate\.$/);
+  const blocked = t.start('beta', { runner: 'claude', confirm: true });
+  assert.deepEqual([blocked.status, blocked.confirm, spawned.length], [409, undefined, 1]);
+  spawned[0].exit(0);
+  const resumed = t.start('acme', { resume: ok.session.id });
+  assert.equal(resumed.status, 201, 'Resume continues the same conversation, no guard');
+  assert.equal(backedUp, 1);
+  rmSync(r2, { recursive: true, force: true });
+});

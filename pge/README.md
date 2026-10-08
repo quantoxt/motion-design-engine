@@ -16,6 +16,9 @@ approve the story plan when the agent asks, then wait for the finals and the pho
   (notes in `refs.json`, keyed by file name), copied to the job's `assets/refs/` with `refs.md`. Clips become a sheet
   of frames. Shared with film briefs: `studio/refs.mjs`.
 - **Viewing:** click any image for the full-screen viewer (← / → or swipe, D downloads, Esc closes).
+- **Finals are 2×** the format size (a 4:5 set is 2160×2700): sharp on any screen; every network downsizes cleanly.
+- **Run agent again** on a job that has work asks first (Resume continues instead). On a delivered job, the current
+  finals and docs are backed up to `out/backup-<time>/` before the new agent starts.
 - **Downloading:** **Download all (zip)** on the job page or the Images list, or one zip per format.
 
 ## Use it by hand

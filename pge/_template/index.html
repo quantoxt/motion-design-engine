@@ -26,15 +26,16 @@ S.panels([
       S.text(g, 'hero', 'Hello.', 0, size * 0.3, { size });
       g.fillStyle = ACCENT;
       S.text(g, 'hero.sub', 'one idea per panel', 0, size * 0.3 + 90, { size: 44, font: TEXT });
-      // The motif: one accent shape that recurs in every panel and carries the story.
+      // The motif: one accent object that recurs in every panel and carries the story. It changes between panels
+      // (size, place, state) and is a main element on at least half of them, never the same corner sticker.
       g.fillRect(-60, -size * 0.75, 120, 14);
   }},
   { name: 'turn', bg: ACCENT, draw(g, F, i) {
-      grain(g, i, F); vignette(g, F);                       // flat colour gets texture, so it isn't a digital fill
+      // Clean flat colour by default. Texture only if the style guide picks it: grain(g, i, F, { amount: 0.03 }).
       g.fillStyle = BG; g.textAlign = 'left';
       paragraph(S, g, 'body', 'A carousel reads like a comic: each panel moves the story one step.', -420, -120, 840, { size: 64, font: TEXT });
       strokeLine(g, -420, 140, 200, 140, 1, { color: BG, width: 8 });   // hand-drawn ink, fixed shape
-      g.fillRect(-60, -F.EY + 120, 120, 14);                // the motif again, same place on every panel
+      g.fillRect(F.EX - 360, F.EY - 340, 280, 280);         // the motif again, bigger and somewhere new
   }},
 ]);
 

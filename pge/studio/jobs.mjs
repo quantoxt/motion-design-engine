@@ -1,7 +1,7 @@
 // Image jobs, server side: briefs in pge/briefs/, jobs in pge/jobs/<slug>/ scaffolded from pge/_template/,
 // gate status read from the files the pipeline writes, and the story-plan approval. Pure file checks.
 import { cp, readFile, writeFile, readdir, stat, mkdir, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, mkdirSync, cpSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse, readBack, briefTitle } from '../../studio/brief.mjs';
@@ -192,3 +192,36 @@ export async function revokePlan(root, slug) {
 // Stored next to the brief in pge/briefs/<slug>.refs/, copied into the job's assets/refs/ (with refs.md) when the
 // job starts, and kept in step there on every change once the job exists.
 export const refs = createRefs({ briefs: BRIEFS, targets: async (root, slug) => (existsSync(jobDir(root, slug)) ? [jobDir(root, slug)] : []) });
+
+// ── Running an agent again on a job that already has work (studio/terminal.mjs guard) ──
+// A fresh run starts the brief over, so the studio asks first. A delivered job is backed up before the agent starts:
+// out/final/, the docs and the drawing code go to out/backup-<time>/, so a mistaken click can't cost the finals.
+export function runGuard(root) {
+  return (slug, history) => {
+    const dir = jobDir(root, slug);
+    let finals = [];
+    try { finals = readdirSync(join(dir, 'out', 'final')).filter((f) => f.endsWith('.png')); } catch {}
+    if (finals.length) {
+      const backup = `out/backup-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+      return {
+        message: `This job is delivered (${finals.length} final images). A new agent reworks it and can overwrite them. `
+          + `The finals, docs and index.html are copied to ${JOBS}/${slug}/${backup}/ first. Run a new agent anyway?`,
+        note: `This job was delivered before. That version is backed up in ${backup}/ (read it, never write to it). `
+          + 'Read docs/ first (plan, review log, lessons), then rework it under the current pge/AGENTS.md rules; a changed plan needs a new OK.',
+        before: () => {
+          const to = join(dir, backup);
+          mkdirSync(to, { recursive: true });
+          cpSync(join(dir, 'out', 'final'), join(to, 'final'), { recursive: true });
+          for (const f of ['docs', 'index.html', 'job.json']) if (existsSync(join(dir, f))) cpSync(join(dir, f), join(to, f), { recursive: true });
+        },
+      };
+    }
+    const started = existsSync(join(dir, 'docs', 'plan.md')) || existsSync(join(dir, 'docs', 'style_guide.md')) || history.length > 0;
+    if (!started) return null;
+    return {
+      message: 'An agent has already worked on this job. A new agent starts from the brief again, on top of that work. '
+        + 'To continue where it stopped, use Resume instead. Run a new agent anyway?',
+      note: 'This job already has work in it: read docs/ and out/ first and continue from the first unfinished gate. Don’t redo finished gates.',
+    };
+  };
+}

@@ -7,6 +7,22 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ## 2026-10-08
 
+### Images: crisper finals and stricter look rules
+- `pge/render.mjs`: finals render at 2× the format size (1080×1350 → 2160×2700; job.json `"scale"` 1–3). A 1080 PNG
+  shown full-screen on a laptop or phone is upscaled 1.5–3× and reads as soft. Drafts and checks stay at 1×.
+- `pge/AGENTS.md` Look: crisp by default (texture only when chosen, faint, never on precise panels; strokes ≥ 4 units),
+  a different layout on every panel (one-line layout sketch per panel in plan.md), the motif as a main element on half
+  the panels, no repeated chrome (label above every headline, rule along every bottom). Critique adds craft + a
+  words-ignored variety test. Template no longer puts grain on flat colour or parks the motif in one place.
+  Why: both quantoxt-inc-ads runs (OpenCode) came out as one template with new words, hazy on the colour panels.
+
+### Running an agent again on a job with work in it
+- `createTerminals({ guard })`: a fresh run (not Resume) on a job that already has work returns 409 with what would
+  happen; the studio shows it and only starts on an explicit OK (`confirm: true`). The agent's prompt then says to
+  continue from the first unfinished gate.
+- Image job already delivered: the finals, docs, index.html and job.json are copied to `out/backup-<time>/` before
+  the agent starts. Delivered film: refused (brands/ folders stay as delivered; use Make new version).
+
 ### Design references for films too, with a note per file and video clips
 - Shared `studio/refs.mjs` + `studio/refs-panel.mjs`: both brief forms (film and image) have the **Design references**
   panel. Images (≤15 MB) and clips (MP4/MOV/WebM, ≤100 MB), 40 per brief, type read from the first bytes.

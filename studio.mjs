@@ -44,13 +44,13 @@ import { createRequire } from 'node:module';
 import { WebSocketServer } from 'ws';
 import { SLUG, briefTitle } from './studio/brief.mjs';
 import { scaffold, gates, shotlist, approveShotlist, revokeShotlist, approvePrimary, revokePrimary, films, briefDrift, syncBrief, attention,
-  makeVersion, versionInfo, versions, splitVersion, refs } from './studio/films.mjs';
+  makeVersion, versionInfo, versions, splitVersion, refs, runGuard } from './studio/films.mjs';
 import { refsRoute } from './studio/refs.mjs';
 import { createTerminals } from './studio/terminal.mjs';
 import { library, brand, mediaFile } from './studio/library.mjs';
 import { filmTranscript } from './studio/transcript.mjs';
 import { pgeApi, pgeMedia } from './pge/studio/api.mjs';
-import { attention as pgeAttention } from './pge/studio/jobs.mjs';
+import { attention as pgeAttention, runGuard as pgeRunGuard } from './pge/studio/jobs.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const RAW = join(ROOT, '_raw'), TEMPLATE = join(RAW, 'brief-template.md'), UI = join(ROOT, 'studio');
@@ -75,8 +75,8 @@ const VENDOR = {
 let terminals = null, pgeTerminals = null, ptyError = null;
 try {
   const { spawn: ptySpawn } = createRequire(import.meta.url)('node-pty');
-  terminals = createTerminals({ root: ROOT, spawn: ptySpawn });
-  pgeTerminals = createTerminals({ root: ROOT, spawn: ptySpawn, base: 'pge/jobs' });   // image jobs
+  terminals = createTerminals({ root: ROOT, spawn: ptySpawn, guard: runGuard(ROOT) });
+  pgeTerminals = createTerminals({ root: ROOT, spawn: ptySpawn, base: 'pge/jobs', guard: pgeRunGuard(ROOT) });   // image jobs
 } catch (err) {
   ptyError = 'The terminal needs node-pty built: run `npm install-scripts approve node-pty && npm rebuild node-pty`, then restart the studio.';
   console.warn(`terminal disabled: ${err.message.split('\n')[0]}`);

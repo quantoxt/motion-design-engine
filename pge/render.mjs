@@ -3,6 +3,8 @@
 //   --draft   out/draft/<format>/NN-<panel>.png + out/draft/contact_<format>.png. No gate: use it while working.
 //   (final)   out/final/<job>-<format>-NN-<W>x<H>.png + out/contact_<format>.png (+ out/contact.png for the
 //             primary format, job.json formats[0]). Refused until pge/check.mjs passed on the current code.
+//             Finals render at 2× the format size (job.json "scale", 1–3): a 1080-wide PNG is shown 1.5–3× larger on
+//             laptops, phones and the studio viewer, and that upscale reads as soft. W×H in the name is the real size.
 //   --panel N render only panel N (1-based); never counts as a final set.
 // The contact sheet shows each panel 360px wide: the size a phone feed shows it at. Read it there.
 import { mkdirSync, rmSync, readdirSync, copyFileSync } from 'node:fs';
@@ -17,6 +19,8 @@ let dir, job, sizes;
 try { ({ dir, job } = loadJob(opt('dir'))); sizes = pickFormats(job, opt('format', 'all')); }
 catch (e) { fail(e.message); }
 const draft = has('draft'), only = opt('panel') ? Number(opt('panel')) : null, name = basename(dir);
+const scale = draft ? 1 : job.scale ?? 2;
+if (![1, 2, 3].includes(scale)) fail(`job.json "scale" must be 1, 2 or 3 (got ${JSON.stringify(job.scale)}).`);
 
 if (!draft) {
   const r = readResult(dir);
@@ -27,7 +31,8 @@ if (!draft) {
 const st = await stage(dir);
 try {
   for (const f of sizes) {
-    const { page, panels, errors } = await st.open(f);
+    const { page, panels, errors } = await st.open(f, scale);
+    const W = f.w * scale, H = f.h * scale;
     if (errors.length) fail(`page error in ${f.name}: ${errors[0]}`);
     const outDir = draft ? join(dir, 'out', 'draft', f.name) : join(dir, 'out', 'final');
     if (only == null) {
@@ -40,12 +45,12 @@ try {
       if (only != null && only !== i + 1) continue;
       await page.evaluate((i) => window.paint(i), i);
       const nn = String(i + 1).padStart(2, '0');
-      const file = join(outDir, draft ? `${nn}-${panels[i]}.png` : `${name}-${f.name}-${nn}-${f.w}x${f.h}.png`);
+      const file = join(outDir, draft ? `${nn}-${panels[i]}.png` : `${name}-${f.name}-${nn}-${W}x${H}.png`);
       await page.locator('#c').screenshot({ path: file });
       written.push(file);
     }
     await page.close();
-    console.log(`${f.name} ${f.w}x${f.h}: ${written.length} panel(s) → ${outDir}`);
+    console.log(`${f.name} ${W}x${H}: ${written.length} panel(s) → ${outDir}`);
     if (only != null) continue;
     const contact = draft ? join(dir, 'out', 'draft', `contact_${f.name}.png`) : join(dir, 'out', `contact_${f.name}.png`);
     sheet(written, contact);

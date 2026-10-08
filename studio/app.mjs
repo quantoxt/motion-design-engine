@@ -618,10 +618,15 @@ function agentPane(slug, { open = false, base = '/api/films' } = {}) {   // base
 
   async function run() {
     if (runner === 'custom' && !custom.value.trim()) { custom.focus(); statusEl.textContent = 'Type the command to run.'; return; }
-    if (session && !confirm('Start a fresh agent session? The old transcript stays in out/terminal.log.')) return;
     runBtn.disabled = true;
     await ensureTerm();
-    const { res, body } = await post(`${base}/${enc}/terminal`, { runner, command: custom.value, cols: term.cols, rows: term.rows });
+    const start = (confirm) => post(`${base}/${enc}/terminal`, { runner, command: custom.value, confirm, cols: term.cols, rows: term.rows });
+    let { res, body } = await start(false);
+    // The job already has work: the server says what a fresh run would do and waits for an explicit yes.
+    if (res.status === 409 && body.confirm) {
+      if (!confirm(body.error)) { runBtn.disabled = false; statusEl.textContent = 'Not started.'; return; }
+      ({ res, body } = await start(true));
+    }
     if (!res.ok) { runBtn.disabled = false; statusEl.textContent = body.error || `Couldn’t start the agent (${res.status}).`; return; }
     session = body.session; sync();
     await connect();

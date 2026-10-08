@@ -61,8 +61,19 @@ The root's look rules still apply where they make sense for a still, and are res
 ## Look
 - Banned defaults: centred title on a gradient, stock-photo-style compositions, decorative corner labels and frame
   borders, glow, generic particle bursts, everything centred.
-- One display face, one text face. One accent colour unless the brief says otherwise. A full-frame flat colour gets
-  `grain` + `vignette` so it doesn't read as a digital fill.
+- One display face, one text face. One accent colour unless the brief says otherwise.
+- **Crisp by default.** Clean flat colour, sharp edges, no vignette. Texture (`grain`, paper) only when the brief or the
+  style guide picks it for a reason (print feel, nostalgia), kept faint (`amount` ≤ 0.03), and never on a panel whose
+  point is precision (UI, product, logo, numbers). No blur, no glow, no soft shadows standing in for depth. Lines and
+  strokes ≥ 4 design units: hairlines go grey and fuzzy on a phone.
+- **A different layout on every panel.** Where the headline sits and how big, where the image sits, how much is empty:
+  no two neighbouring panels share them. `plan.md` gives each panel a one-line layout sketch (e.g. "word bleeds off the
+  right edge, object bottom-left, 60% empty"). Same template with new words is a slideshow, not a story.
+- **Pictures, not only type.** The motif is a main element on at least half the panels (the first thing the eye hits,
+  or ≥ 25% of the frame), and it changes between panels (grows, breaks, opens, multiplies). A small icon parked in the
+  same corner on every panel is decoration. At least one panel is image-led, with the type secondary.
+- No repeated chrome: a small all-caps label above every headline (`REASON 2 · SPEED`), a rule along the bottom of
+  every panel, the same icon in the same corner. Each reads as a template. Number a sequence once, in the image itself.
 - Text is readable at phone size (the checker enforces 11px at 360 wide; aim higher for body copy: ≥ 44 design units).
   Body copy: short lines, never more than ~3 lines per panel.
 - Real assets only: logos, photos and copy come from the brief's source. Check logo resolution by its content box.
@@ -84,7 +95,9 @@ The root's look rules still apply where they make sense for a still, and are res
 3. Draw. Render `--draft`, read the contact sheet, fix, repeat.
 4. `pge/check.mjs` passes in every format.
 5. Critique: score each round 1–10 on hook (panel 1 alone), story (can you follow it from the images alone, words
-   covered?), readability at phone size, composition, brand accuracy, variety between panels. Score from the
-   rendered images and the checker, not from the plan. Fix the 3 worst problems. At least 4 rounds, all 8+,
+   covered?), readability at phone size, composition, brand accuracy, variety between panels, craft (crisp edges, no
+   haze, nothing that looks like a default). Score from the rendered images and the checker, not from the plan.
+   Variety test: look at the contact sheet with the words ignored. If two neighbouring panels have the same layout,
+   variety is 5 at most. Craft test: open one final at full size and look at the edges of the type and the motif. Fix the 3 worst problems. At least 4 rounds, all 8+,
    logged in `docs/review_log.md` as `## Round N`.
-6. Final render. Then write `docs/lessons.md` (short measured rules, not a diary) and tell the human it's ready.
+6. Final render (2× the format size: a 1080×1350 format gives 2160×2700 PNGs; job.json `"scale"` 1–3). Then write `docs/lessons.md` (short measured rules, not a diary) and tell the human it's ready.

@@ -1,11 +1,11 @@
 // Server-side film helpers: scaffold brands/<slug>/ from the template, and read gate
 // status from the files the pipeline produces. Pure file checks, no state of its own.
 import { cp, readFile, writeFile, readdir, stat, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse, readBack, filmSettings } from './brief.mjs';
-import { finals } from './library.mjs';
+import { finals, finalPattern } from './library.mjs';
 import { CHECKS, readResult, primaryReview, fingerprint } from '../lib/gate.mjs';
 import { createRefs } from './refs.mjs';
 
@@ -366,4 +366,23 @@ export async function versionInfo(root, slug) {
   const { base, version } = splitVersion(root, slug);
   const all = await versions(root, base);
   return { base, version, versions: all, latest: all.at(-1)?.slug === slug, delivered: await delivered(root, slug) };
+}
+
+// ── Running an agent again on a film that already has work (studio/terminal.mjs guard) ──
+// A delivered film is never reworked in place (brands/ folders stay as delivered): changes go through Make new version.
+// A film in production asks first, since a fresh run starts the brief over on top of the existing work.
+export function runGuard(root) {
+  return (slug, history) => {
+    const dir = join(root, 'brands', slug);
+    let out = [];
+    try { out = readdirSync(join(dir, 'out')); } catch {}
+    if (out.some((f) => finalPattern(slug).test(f))) return { block: true,
+      message: `brands/${slug}/ is delivered, so it isn’t reworked in place. To change it, edit the brief and use Make new version; to continue a conversation, use Resume.` };
+    if (!existsSync(join(dir, 'docs', 'shotlist.md')) && !history.length) return null;
+    return {
+      message: 'An agent has already worked on this film. A new agent starts from the brief again, on top of that work. '
+        + 'To continue where it stopped, use Resume instead. Run a new agent anyway?',
+      note: 'This film already has work in it: read docs/ and out/ first and continue from the first unfinished gate. Don’t redo finished gates.',
+    };
+  };
 }

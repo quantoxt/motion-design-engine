@@ -45,8 +45,9 @@ export const CLAUDE_EFFORT = 'medium';
 // OpenCode has no effort flag: its model and variant ("high") are set in the factory's opencode.json (project config,
 // read because agents run from the factory root). OpenCode 2 ignores OPENCODE_CONFIG/_CONTENT, so it can't be per-session.
 // base: the folder jobs live in ('brands' for films, 'pge/jobs' for image jobs).
-export function command(runner, slug, custom, { agentSession, resume, base = 'brands' } = {}) {
-  const brief = `${base}/${slug}/docs/brief.md`, prompt = `follow ${brief}`, effort = ['--effort', CLAUDE_EFFORT];
+// note: one more sentence for the agent (e.g. "this job already has work in it"), appended to the prompt.
+export function command(runner, slug, custom, { agentSession, resume, base = 'brands', note } = {}) {
+  const brief = `${base}/${slug}/docs/brief.md`, prompt = note ? `follow ${brief}. ${note}` : `follow ${brief}`, effort = ['--effort', CLAUDE_EFFORT];
   if (runner === 'claude' && resume) return { file: 'claude', args: ['--resume', resume, ...effort], label: `claude --resume ${resume} --effort ${CLAUDE_EFFORT}` };
   if (runner === 'claude') return { file: 'claude', args: ['--session-id', agentSession, '--name', slug, ...effort, prompt], label: `claude --effort ${CLAUDE_EFFORT} "${prompt}"` };
   if (runner === 'opencode' && resume) return { file: 'opencode', args: ['--session', resume], label: `opencode --session ${resume}` };
@@ -75,7 +76,10 @@ export function appendLog(file, data, cap = LOG_CAP) {
 }
 
 // spawn: node-pty's spawn (injected so tests can use a fake PTY).
-export function createTerminals({ root, spawn, base = 'brands', logCap = LOG_CAP, scrollback = SCROLLBACK, opencode = opencodeCli, watchEvery = WATCH_EVERY, watchFor = WATCH_FOR }) {
+// guard(slug, history) → null, or { message, note?, block?, before?() } for a job that already has work in it: a fresh
+// run (not Resume) is refused with `message` until the request says { confirm: true }, or always when `block`.
+// before() runs just before the agent starts (a backup); note is added to the agent's prompt.
+export function createTerminals({ root, spawn, base = 'brands', guard = () => null, logCap = LOG_CAP, scrollback = SCROLLBACK, opencode = opencodeCli, watchEvery = WATCH_EVERY, watchFor = WATCH_FOR }) {
   const sessions = new Map();   // slug → session (kept after exit, for status + replay)
 
   const status = (s) => s && {
@@ -103,7 +107,7 @@ export function createTerminals({ root, spawn, base = 'brands', logCap = LOG_CAP
     }));
   }
 
-  function start(slug, { runner, command: custom, resume, cols = 100, rows = 30 } = {}) {
+  function start(slug, { runner, command: custom, resume, confirm, cols = 100, rows = 30 } = {}) {
     const dir = join(root, base, slug);
     if (!existsSync(dir)) return { status: 404, error: `${base}/${slug}/ doesn't exist.` };
     const live = sessions.get(slug);
@@ -121,9 +125,15 @@ export function createTerminals({ root, spawn, base = 'brands', logCap = LOG_CAP
       cmd = command(runner, slug, null, { resume: agentSession, base });
     } else {
       if (!RUNNERS.includes(runner)) return { status: 400, error: 'Pick Claude, OpenCode or a custom command.' };
+      if (runner === 'custom' && !(typeof custom === 'string' && custom.trim())) return { status: 400, error: 'Type the custom command to run.' };
+      // A fresh agent on a job that already has work would start the brief over on top of it.
+      const g = guard(slug, readHistory(slug));
+      if (g?.block) return { status: 409, error: g.message };
+      if (g && confirm !== true) return { status: 409, error: g.message, confirm: true };
       if (runner === 'claude') agentSession = randomUUID();
-      cmd = command(runner, slug, custom, { agentSession, base });
+      cmd = command(runner, slug, custom, { agentSession, base, note: g?.note });
       if (!cmd) return { status: 400, error: 'Type the custom command to run.' };
+      try { g?.before?.(); } catch (err) { return { status: 500, error: `Couldn’t back up the job first: ${err.message}` }; }
     }
 
     const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' };

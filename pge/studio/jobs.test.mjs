@@ -5,7 +5,7 @@ import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { refs, scaffold, gates, planFile, approvePlan, revokePlan, mediaPath, briefs, jobs, jobSettings, images, finalFiles, attention } from './jobs.mjs';
+import { refs, runGuard, scaffold, gates, planFile, approvePlan, revokePlan, mediaPath, briefs, jobs, jobSettings, images, finalFiles, attention } from './jobs.mjs';
 import { fingerprint } from '../lib/gate.mjs';
 
 const PGE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -137,5 +137,26 @@ test('design references: kept with the brief, copied into the job with refs.md, 
   assert.ok(existsSync(join(dest, 'late.png')), 'mirrored once the job exists');
   assert.equal((await refs.remove(r, 'x', 'late.png')).status, 200);
   assert.ok(!existsSync(join(dest, 'late.png')));
+  rmSync(r, { recursive: true, force: true });
+});
+
+test('runGuard: fresh job runs, started job asks, delivered job asks and is backed up first', async () => {
+  const r = root();
+  writeFileSync(join(r, 'pge', 'briefs', 'x.md'), brief('X'));
+  await scaffold(r, 'x');
+  const guard = runGuard(r), dir = join(r, 'pge', 'jobs', 'x');
+  assert.equal(guard('x', []), null, 'nothing done yet');
+  assert.match(guard('x', [{ id: 's1' }]).message, /Resume/);
+  writeFileSync(join(dir, 'docs', 'plan.md'), '# plan\n');
+  assert.ok(guard('x', []).note.includes('first unfinished gate'));
+  mkdirSync(join(dir, 'out', 'final'), { recursive: true });
+  writeFileSync(join(dir, 'out', 'final', 'x-portrait-01-2160x2700.png'), 'png');
+  const g = guard('x', []);
+  assert.match(g.message, /delivered \(1 final images\)/);
+  g.before();
+  const backup = g.note.match(/(out\/backup-[0-9T-]+)\//)[1];
+  assert.ok(existsSync(join(dir, backup, 'final', 'x-portrait-01-2160x2700.png')));
+  assert.ok(existsSync(join(dir, backup, 'docs', 'plan.md')) && existsSync(join(dir, backup, 'index.html')));
+  assert.deepEqual((await images(r, 'x')).final, ['final/x-portrait-01-2160x2700.png'], 'the backup is not listed as finals');
   rmSync(r, { recursive: true, force: true });
 });
