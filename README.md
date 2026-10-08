@@ -73,7 +73,9 @@ node render-parallel.mjs --dir brands/<brand> --all-formats --formats vertical  
 node shots.mjs beats --dir brands/<brand>                     # critique stills
 node shots.mjs events --dir brands/<brand> --format all       # clicks, swaps, transforms, every format
 node render-parallel.mjs --dir brands/<brand> --scan          # ~3 min input for holds.mjs
-node holds.mjs --dir brands/<brand>                           # one-frame pops + dead holds
+node holds.mjs --dir brands/<brand>                           # one-frame pops + dead holds (+ out/pops.png)
+node render-parallel.mjs --dir brands/<brand> --scan --from 12 --dur 2   # check one fix fast
+node holds.mjs --dir brands/<brand> --file out/scan_12.00-14.00.mp4     # (window: never the gate)
 node check.mjs --dir brands/<brand>                           # clicks on target, no overflow, nothing cut off
 node finalize.mjs --dir brands/<brand> --all-formats          # mix, −14 LUFS, final + posting copy
 ```

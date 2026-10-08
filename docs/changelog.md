@@ -5,7 +5,53 @@ Bugs found in existing factory code are detailed in `docs/bug-docs.md`; this fil
 
 ---
 
+## 2026-10-08
+
+### Rule: film agents never write to the engine
+- CLAUDE.md, the skill, the brief template and `docs/bug-docs.md` now say it outright: root scripts, `lib/`, `studio/`,
+  `brands/_template/`, `CLAUDE.md` and `.claude/` are read-only during a film run. Engine bugs are logged `open` with a
+  proposed fix and worked around in the brand folder. Before, the rules only said "log any engine bug", and the v2 agent
+  fixed N-001/U-001 in the engine itself mid-run (good fixes, but one broke a test while Unburn depended on that code).
+
+### From the Unburn and Narrative Nexus v2 lessons
+- **`holds.mjs` → `out/pops.png`:** ±3 frames around every pop, one row per pop, film time burnt in (centre = the pop).
+  Unburn built these tiles by hand for every pop.
+- **Window scans for checking a fix:** `--scan --from S --dur D` (and `--animatic` likewise) writes
+  `scan_<from>-<to>.mp4` instead of overwriting `scan.mp4`. `holds.mjs --file` reads the start from that name.
+  `out/holds.json` is written only for a full-film `out/scan.mp4` (from 0, film.json's length): before, a partial
+  scan overwrote `scan.mp4` and could pass the gate on 2 seconds of film.
+- **`shots.mjs events` shoots scene handoffs automatically** from `window.SCENES` (overlap → `[next.from, prev.to]`,
+  cut → ±0.3s), unless a declared transform already covers it. Template exports `window.SCENES`.
+- **`L.text(…, { align, baseline })`** sets them before measuring. `L.at` errors name the `t >= x` handoff fix.
+- `lib/layout.test.mjs`: the anchor test now expects the `solid` field added by N-001.
+- Rules: CLAUDE.md (one owner per morphing object, no state-colour branches, counters settle, entry from below
+  from `F.EY`, solid text, `window.SCENES`, snap visuals to the 16th grid before cues, onset `hop_length=128,
+  backtrack=True`, pops.png + window scans in the loop); brief template + skill: every UI action a beat shows must
+  exist in the product; template comment for entry from below.
+
+### Studio: shotlist reads as a document
+- The shotlist panel rendered raw markdown in a `<pre>`. New `studio/md.mjs` renders headings, paragraphs, lists
+  (one nested level), tables (scroll sideways on narrow screens), quotes and rules. All text goes through the
+  escaping `inline()`, so HTML in the file never becomes markup (tested). Served by `studio.mjs`.
+
 ## 2026-10-07
+
+### Added: reverse-pipeline lab scaffold
+- `lab/` (isolated): `README.md` with the hard boundary (never writes outside
+  `lab/`, imports engine read-only), `refs/<name>/` per reference video
+  (gitignored: `source.mp4` + `prompt.md` + optional `meta.md`, `analysis/`
+  output). Tokens land as lab-local md; flow-back into the factory is a future
+  explicit step. `docs/reverse-pipeline-plan.md` is the plan.
+- `lab/analyze.mjs` + `lab/tokens.md` (schema). The analyzer measures only:  `meta.json`, `mafd.txt`, `cuts.json` (frame-diff pops via `lib/holds.mjs`,
+  `--tick 0` default — references have no 12fps grain), `contact.png`,
+  `shots/` (mid-shot), `strips/` (13 frames per cut), `beats.json`,
+  `loudness.json`, `sync.json` (cut↔beat offsets), `tokens.md` draft with
+  statements EMPTY for the agent. Fixed own bug: assumed holds shape
+  `{start,end}`, engine returns `{from,to}` — read the source, don't guess.
+- Judgment pass on all six refs: per-ref `tokens.md` (statements from evidence,
+  measurements flagged where unverified: shared BPMs, −0.07s beat-phase offset)
+  + `lab/findings.md` (5 cross-video rules, tool lessons, NN comparison preview
+  clearly marked as NOT lab output yet).
 
 ### Fixed: brief editor counted 9 of 10 at most
 - Section 10 (Gates) has no fields, so it never counted as started. Field-less sections now count as complete

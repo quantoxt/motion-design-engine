@@ -2,9 +2,46 @@
 
 Every bug found and fixed in factory (engine) code: what broke, how it was proven, what changed, how the fix was verified.
 Newest first. Brand-film bugs don't go here (they belong in that brand's review log).
+Film agents only LOG here (marked `open`, with a proposed fix); they never edit engine code. Fixes are made outside film runs.
 
 Format per entry: **ID · file · severity**, then Symptom / Cause / Fix / Verified.
 Severity: **high** = breaks a real job · **med** = breaks a common option · **low** = edge case or docs.
+
+---
+
+## 2026-10-08 · Lessons follow-up
+
+### F-001 · `render-parallel.mjs --scan --from/--dur`, `holds.mjs` · high
+- **Symptom:** checking a fix on a short window (`--scan --from 12 --dur 2`) overwrote the full `out/scan.mp4`, and a plain
+  `holds.mjs` then scanned those 2 seconds as if they started at 0 and could write a passing `out/holds.json`: the render
+  gate opened without the film having been scanned.
+- **Cause:** drafts always wrote `scan.mp4`/`animatic.mp4`, and `holds.mjs` trusted any default-named file.
+- **Fix:** partial drafts write `scan_<from>-<to>.mp4`; `holds.mjs` reads the window start from that name and writes the
+  gate result only for `out/scan.mp4` starting at 0 with film.json's length.
+- **Verified:** scratch template, `--scan --from 3 --dur 2` → `scan_3.00-5.00.mp4`; planted one-frame pop reported at
+  4.000s with `pops.png`; that 2s file copied to `scan.mp4` → no `holds.json` written. Frame code untouched (output name only).
+
+## 2026-10-08 · Narrative Nexus v2 build
+
+### N-001 · `lib/checks.mjs` / `lib/layout.js` · med
+- **Symptom:** v2's `03 / 06` index sat under the thumbnail row and the book title ran into `View details →`, and `check.mjs` passed both. Only stills caught them.
+- **Cause:** the check only compared a child with its own parent. Text sitting on top of neighbouring text was invisible to it.
+- **Fix:** every `L.text` anchor is now `solid`, and `L.anchor(…, { solid: true })` opts in. A new `collision` failure fires when two solid anchors overlap by more than 2px on both axes for ≥0.3s, unless one is inside the other through the parent chain.
+- **Verified:** a planted overlap of 50×40px is reported. Apart, a label in its own chip, and a non-solid cursor all give 0 failures. v2 still passes (37 anchors, no false positives). **Limit:** it only sees what the film anchors. The v2 bug would have been caught only if the index and thumbs had been anchored.
+
+### U-001 · `render-parallel.mjs --out` · low · fixed
+- **Fix:** a relative `--out` resolves inside `--dir`. A path that already points under `--dir` from the cwd (the old workaround) still works. ffmpeg's stdin has an error handler, and the drain wait races ffmpeg's exit.
+- **Verified:** run from `/tmp`, `--out out/x.mp4` lands in the brand's `out/`. The `brands/<name>/out/x.mp4` form still works. A bad path prints ffmpeg's "No such file or directory" plus `ffmpeg exited 254`, exits 1, and shows no EPIPE. framemd5 serial vs parallel (9.0–9.5s): 30/30 frames identical.
+
+---
+
+## 2026-10-07 · Unburn build
+
+### U-001 · `render-parallel.mjs --out` · low · fixed 2026-10-08 (see above)
+- **Symptom:** `--out out/x.mp4 --dir brands/<name>` crashed with a Node `EPIPE` stack. ffmpeg's real error ("No such file or directory") was buried above it.
+- **Cause:** `--out` resolves against the process cwd, not `--dir` (the default output does use `--dir`). And the frame writer has no `error` handler on ffmpeg's stdin, so ffmpeg exiting early becomes an unhandled EPIPE.
+- **Fix (not applied):** resolve a relative `--out` against `DIR`, and handle `ffmpeg.stdin` errors by reporting ffmpeg's exit code. Workaround: pass `--out brands/<name>/out/x.mp4`.
+- **Verified:** reproduced 2026-10-07; workaround rendered fine.
 
 ---
 

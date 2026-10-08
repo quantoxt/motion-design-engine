@@ -259,10 +259,10 @@ Use the **motion-reel** skill. Go all out.
 ## 10. Gates (do not skip)
 
 1. **Assets:** list what was found in `brands/<folder>/assets` and write `docs/style_guide.md`.
-2. **Shotlist:** `docs/shotlist.md` on the beat grid, listing every deviation from this brief, every claim, and open questions. Flag any live data that contradicts the site's copy. **Wait for my OK before code.**
+2. **Shotlist:** `docs/shotlist.md` on the beat grid, listing every deviation from this brief, every claim, and open questions. Flag any live data that contradicts the site's copy. Every UI action a beat shows (pause, unlock, filter…) must exist in the real product: find it in the source first. **Wait for my OK before code.**
 3. **Animatic** (`--animatic`) to lock pacing.
 4. **Critique:** every check in CLAUDE.md's loop (beats, handoff strips, `shots.mjs events` for clicks, swaps and transforms, `holds.mjs` pop/hold scan, `check.mjs` geometry, every format via `--format all`), scored 1–10 from measurements, at least 4 rounds, all scores 8+, logged in `docs/review_log.md`.
-5. **Render** once `check.mjs` and `holds.mjs` pass (the renderer enforces it): the primary format first, then **wait for my OK on it** in the studio (the renderer refuses the other formats until then), then the rest (`--all-formats --formats …`), run `finalize.mjs`, deliver. Write lessons to `brands/<brand>/docs/lessons.md`, log any engine bug in `docs/bug-docs.md`, and say what you'd improve next.
+5. **Render** once `check.mjs` and `holds.mjs` pass (the renderer enforces it): the primary format first, then **wait for my OK on it** in the studio (the renderer refuses the other formats until then), then the rest (`--all-formats --formats …`), run `finalize.mjs`, deliver. Write lessons to `brands/<brand>/docs/lessons.md`, log any engine bug in `docs/bug-docs.md` (log it only: never edit engine files, work around it in the brand folder), and say what you'd improve next.
 
 ---
 

@@ -6,6 +6,8 @@ description: Make a product or showreel motion video rendered from code. Use whe
 # Motion reel
 
 Studio root holds the engine (`lib/`, `render*.mjs`, `shots.mjs`, audio scripts, `CLAUDE.md`).
+**Never write to the engine** (root scripts, `lib/`, `studio/`, `brands/_template/`, `CLAUDE.md`, `.claude/`): log engine
+bugs in `docs/bug-docs.md` as `open` with a proposed fix and work around them inside the brand folder.
 Every film lives in its own `brands/<name>/` folder. Never mix brand files into root.
 
 ## Pipeline
@@ -35,7 +37,7 @@ Every film lives in its own `brands/<name>/` folder. Never mix brand files into 
    verify with onsets. Every cut locks to this grid. Record dims/duration/bpm
    in `film.json` (renderers and stills read it — no hardcoded sizes).
 5. **Shotlist.** Write `docs/shotlist.md` on the beat grid, surface brief-vs-site
-   conflicts as questions, and WAIT for user OK before code.
+   conflicts as questions, check every UI action a beat shows exists in the real product (grep the source), and WAIT for user OK before code.
    The OK is either an explicit "approved" in chat, or a studio approval:
    `docs/approvals.json` → `shotlist.sha256` must equal `sha256sum docs/shotlist.md`.
    A mismatch means the shotlist changed after approval: stop and ask again. Any edit

@@ -8,6 +8,7 @@
 //   #/library/<slug> that brand's films; click one to play it full screen
 // The brief form is generated from _raw/brief-template.md (see brief.mjs).
 import { parse, serialize, slugFor, inline, readBack } from './brief.mjs';
+import { renderMarkdown } from './md.mjs';
 
 const $ = (sel) => document.querySelector(sel);
 const DRAFT_KEY = 'studio.brief.draft.v1';
@@ -360,7 +361,7 @@ async function viewFilm(slug) {
     panelSha = body.sha256;
     panel = el('div', { class: 'shot' }, [
       msg ? el('p', { class: 'flash' }, msg) : null,
-      el('pre', { class: 'shot-text', tabindex: '0', 'aria-label': 'Shotlist' }, body.text),
+      el('div', { class: 'shot-text md', tabindex: '0', role: 'document', 'aria-label': 'Shotlist', html: renderMarkdown(body.text) }),
       el('div', { class: 'shot-acts' }, body.current
         ? [el('span', {}, `You approved this version ${ago(body.approval.at)}.`), el('button', { type: 'button', class: 'quiet', onclick: closePanel }, 'Close')]
         : [

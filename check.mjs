@@ -1,6 +1,6 @@
 // Geometry check: proves what stills can only suggest. Seeks the film at 30fps in every format (no encode)
 // and reads its anchors (lib/layout.js): clicks land inside their targets with the cursor at rest,
-// children stay inside parents, nothing sits cut by the frame edge unless marked bleed.
+// children stay inside parents, solid anchors (all text) don't collide, nothing sits cut by the frame edge unless marked bleed.
 // node check.mjs --dir brands/<name> [--format <name>|all (default all)] [--fps 30]
 // Writes out/check.json (the studio's "Machine checks" gate; full renders need it to pass).
 // Exit 0 = passed, 1 = failures, 2 = can't run.
@@ -45,7 +45,7 @@ try {
     const times = [...grid.map((t) => ({ t, grid: true })), ...extra.map((t) => ({ t, grid: false }))];
     const frames = await page.evaluate((times) => times.map(({ t, grid }) => {
       window.seek(t);
-      return { t, grid, anchors: window.LAYOUT.live().map(({ name, x, y, w, h, parent, bleed }) => ({ name, x, y, w, h, parent, bleed })) };
+      return { t, grid, anchors: window.LAYOUT.live().map(({ name, x, y, w, h, parent, bleed, solid }) => ({ name, x, y, w, h, parent, bleed, solid })) };
     }), times);
     const failures = check(frames, { clicks: meta.clicks, frame: { w, h }, fps: FPS });
     for (const e of errors) failures.unshift({ kind: 'page-error', t: null, msg: e });

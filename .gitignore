@@ -24,3 +24,7 @@ _raw/*
 
 # Python bytecode (beats.py)
 __pycache__/
+
+# Lab references are other people's work, never pushed.
+lab/refs/*
+!lab/refs/.gitkeep

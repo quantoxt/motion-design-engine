@@ -3,7 +3,8 @@
 // node shots.mjs strip 6.0 8.0 12 → out/strip.png  (12 frames across a window)
 // node shots.mjs at 1.0 4.2 …     → out/at_<t>.png (full-size frames)
 // node shots.mjs events           → out/events.png (a still at every time in window.EVENTS)
-//                                  + out/transforms.png (one row per window.TRANSFORMS window, 0.15s steps)
+//                                  + out/transforms.png (one row per window.TRANSFORMS window and per scene
+//                                    handoff from window.SCENES, 0.15s steps)
 // Add --dir brands/<name> to target a brand folder (all outputs go there).
 // Add --format <name> (from film.json "formats") or --format all to shoot other formats; outputs get a
 // _<format> suffix (beats_wide.png, at_1.00_wide.png). Without it: film.json's w/h, no suffix.
@@ -51,6 +52,21 @@ const grid = (() => {
 // entries are times or { t, target }),
 // window.TRANSFORMS = [[from, to], …]. Each event gets a still at t and t+0.1 (the moment and just after).
 const STEP = 0.15;
+// Scene handoffs from window.SCENES ([{ from, to }…], the film's own scene table), so a moved handoff can't go stale:
+// overlapping scenes → [next.from, prev.to]; touching scenes → ±0.3s around the cut. Skipped when a declared
+// transform window already covers it.
+function handoffs(scenes, transforms, dur) {
+  const s = (scenes ?? []).filter((x) => Number.isFinite(x?.from) && Number.isFinite(x?.to)).sort((a, b) => a.from - b.from);
+  const out = [];
+  for (let i = 0; i + 1 < s.length; i++) {
+    const a = s[i], b = s[i + 1];
+    const w = b.from < a.to ? [b.from, Math.min(a.to, dur)] : [Math.max(0, a.to - 0.3), Math.min(dur, b.from + 0.3)];
+    if (w[1] - w[0] < 0.05 || (transforms ?? []).some(([x, y]) => x <= w[0] + 0.05 && y >= w[1] - 0.05)) continue;
+    out.push(w);
+  }
+  return out;
+}
+
 function eventShots(events, transforms) {
   const stills = Object.entries(events ?? {}).flatMap(([kind, ts]) =>
     (Array.isArray(ts) ? ts : []).flatMap((e) => {
@@ -118,8 +134,11 @@ async function shoot({ name, w: W, h: H }) {
   } else if (mode === 'at') {
     for (const t of rest.map(Number)) await frame(t, null, OUT(`at_${t.toFixed(2)}${sfx}.png`));
   } else if (mode === 'events') {
-    const { events, transforms } = await page.evaluate(() => ({ events: window.EVENTS, transforms: window.TRANSFORMS }));
-    const { stills, rows } = eventShots(events, transforms);
+    const { events, transforms, scenes } = await page.evaluate(() => ({ events: window.EVENTS, transforms: window.TRANSFORMS,
+      scenes: (window.SCENES ?? []).map((x) => ({ from: x.from, to: x.to })) }));
+    const auto = handoffs(scenes, transforms, DUR);
+    if (!scenes.length) console.log('No window.SCENES: scene handoffs are not shot automatically (export the scene table, see _template/index.html).');
+    const { stills, rows } = eventShots(events, [...(transforms ?? []), ...auto]);
     if (!stills.length && !rows.length) {
       console.log('No window.EVENTS / window.TRANSFORMS in the film: declare its clicks, swaps and transforms (see _template/index.html).');
     }

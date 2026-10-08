@@ -23,6 +23,7 @@ const g = canvas.getContext('2d');
 // to the screen. Every scene draws through it, so anchors, cursor targets and checks agree.
 const F = frameExtents(W, H);          // frame in design units: size bleed elements (marquees, walls) from F
 const { K, EX, EY } = F;               //   e.g. const m = F.across(40); g.fillRect(m.x, y, m.w, 90)
+                                       // entry from below: y = y1 + (1 - e) * (EY + h - y1), starts fully off-frame
 const camera = () => g.setTransform(K, 0, 0, K, W / 2, H / 2);
 
 // Anchors: name every target where you draw it (lib/layout.js). The cursor, ink and check.mjs read them.
@@ -94,6 +95,7 @@ const SCENES = [
   }},
   // ... append one object per shot. Last frame must equal first (loop).
 ];
+window.SCENES = SCENES;                                  // shots.mjs events steps through every handoff from this
 
 function draw(t) {
   // Renderers sample slightly before 0 (motion blur) and up to DUR: clamp so

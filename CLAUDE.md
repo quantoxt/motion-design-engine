@@ -5,6 +5,10 @@
 - Each film lives in `brands/<name>/`: its `index.html`, `assets/`, `docs/shotlist.md`,
   `beats.json`, score/SFX sources, and `out/`.
 - New job: copy `brands/_template/` → `brands/<name>/`, work only inside it.
+- **Film agents never write to the engine.** Root scripts, `lib/`, `studio/`, `brands/_template/`, `CLAUDE.md` and
+  `.claude/` are read-only to you, even for a one-line fix, even if the bug blocks you. Another film may be mid-render on
+  that code. Found an engine bug? Log it in `docs/bug-docs.md` (symptom, cause, proposed fix, marked `open`), work
+  around it inside your brand folder, and say so in your review log. Engine fixes are made by hand, outside film runs.
 - All scripts take `--dir brands/<name>` (outputs land in that folder's `out/`).
   Running without `--dir` uses the current directory (legacy single-project mode).
 
@@ -71,11 +75,24 @@
 - A state change must read at phone size in both states (give "before" a tint).
 - Bleed elements (marquees, walls) are sized from the frame, not the content box:
   `frameExtents(W, H)` from `lib/layout.js` (`F.across(pad)`, `F.down(pad)`), anchored `{ bleed: true }`.
+  An entry from below starts at `F.EY + its height`, not a fixed offset.
+- One owner per morphing object: a card that morphs from scene A into B is drawn by exactly one scene at
+  any moment (A until its `to`, then B). Two scenes each drawing "their" copy pops for a frame.
+- No branches on state colour (`t < X ? mix(…) : CARD`): it snaps when the branch flips mid-spring. One
+  expression whose springs reach their end values.
+- A counter settles before the beat that reads it (stiff spring ≥300/34 when it has <0.5s, or a ramp that
+  lands exactly on the next event).
+- Text that stacks near other text: give it `L.text` (always solid) or `{ solid: true }` so check.mjs sees
+  collisions. Pass `{ align, baseline }` to `L.text` so it measures what fillText draws.
+- An anchor read at a click time must be drawn at exactly that time: hand off strictly after (`t > open`).
+- Export the scene table as `window.SCENES`: `shots.mjs events` steps through every handoff from it.
 
 ## Sound
 - Score and SFX are synthesized in code unless a track is supplied.
-- Write the beat grid FIRST (from BPM), lock every cut to it, then measure the mix.
-- Verify librosa grids with onsets, not `beat_track`, when hats sit on offbeats.
+- Write the beat grid FIRST (from BPM), lock every cut to it, then measure the mix. Snap every visual
+  event time to the 16th grid BEFORE writing cues; a cue copied from an off-grid visual is off too.
+- Verify librosa grids with onsets, not `beat_track`, when hats sit on offbeats. Use
+  `onset_detect(hop_length=128, backtrack=True)`: the default hop reads ~+16ms late (detector latency).
 - Whooshes peak after they start — begin them ~0.19s before the cut.
 - Hit −14 LUFS with two-pass `loudnorm` (`linear=true`), confirm with `ebur128`.
 - You cannot hear the result. Say so and ask a human to listen; "sound sync" here
@@ -96,11 +113,13 @@
      every transform (fine endpoints prove nothing about the middle). The film declares
      them in `window.EVENTS` / `window.TRANSFORMS`, derived from the drawing constants.
    - `render-parallel.mjs --scan` then `holds.mjs`: one-frame pops (hidden cuts,
-     full-size entries, hard swaps) and holds >1s where only grain/boil moves. Fix
+     full-size entries, hard swaps) and holds >1s where only grain/boil moves. Look at `out/pops.png`
+     (±3 frames per pop) before fixing. Check a fix on a window (`--scan --from 12 --dur 2`, then
+     `holds.mjs --file out/scan_12.00-14.00.mp4`); only the full `--scan` counts for the gate. Fix
      each, or list an intended hold in film.json `"holds"`. The animatic is too coarse for it.
    - Every format: `shots.mjs events --format all` and `shots.mjs at <hook> <densest> <end> --format all`.
    - `check.mjs`: in every format, every click lands in its target with the cursor at rest,
-     no text overflows its parent, nothing sits cut by the frame edge.
+     no text overflows its parent, no two texts (or `{ solid: true }` anchors) collide, nothing sits cut by the frame edge.
    Re-check the encoded MP4 once at the end (blur + compression change the look).
 2. Score 1-10 on: hook in first 2s, readability at phone size,
    motion quality, variety, brand accuracy, sound sync. Score from measurements,

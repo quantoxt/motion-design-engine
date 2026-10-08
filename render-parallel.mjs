@@ -73,7 +73,12 @@ const half = (v) => Math.round(v / 4) * 2;        // half size, kept even (yuv42
 const W = SMALL ? half(arg('w', film.w ?? 1080)) : arg('w', film.w ?? 1080);
 const H = SMALL ? half(arg('h', film.h ?? 1920)) : arg('h', film.h ?? 1920);
 const CRF = SMALL ? 28 : arg('crf', 16);
-const OUT = sarg('out', join(DIR, 'out', ANIM ? 'animatic.mp4' : SCAN ? 'scan.mp4' : 'silent.mp4'));
+// A relative --out is inside --dir (like every default), unless it already names a path under it from the cwd.
+const outArg = sarg('out', '');
+// A partial draft (--from/--dur) gets its window in the name, so it never replaces the full-film scan.mp4 the gate trusts.
+const WIN = SMALL && (flag('from') || flag('dur')) ? `_${FROM.toFixed(2)}-${(FROM + DUR).toFixed(2)}` : '';
+const OUT = !outArg ? join(DIR, 'out', `${ANIM ? 'animatic' : SCAN ? 'scan' : 'silent'}${WIN}.mp4`)
+  : resolve(outArg).startsWith(DIR + '/') ? resolve(outArg) : resolve(DIR, outArg);
 const N = arg('workers', availableParallelism());
 const AHEAD = 2;                                   // frames queued per worker (bounds memory)
 mkdirSync(join(DIR, 'out'), { recursive: true });
@@ -106,6 +111,8 @@ try {
     '-pix_fmt', 'yuv420p', OUT],
     { stdio: ['pipe', 'inherit', 'inherit'] });
   const ffDone = new Promise((r, j) => ff.on('close', (c) => (c === 0 ? r() : j(new Error(`ffmpeg exited ${c}`)))));
+  ff.stdin.on('error', () => {});   // ffmpeg quit early: ffDone carries its exit code instead of an EPIPE stack
+  ffDone.catch(() => {});
 
   async function paint(w, f) {
     const pngs = [];
@@ -134,7 +141,7 @@ try {
     const pngs = await jobs.get(f);
     jobs.delete(f);
     enqueue(f + AHEAD * N);
-    for (const png of pngs) if (!ff.stdin.write(png)) await new Promise((r) => ff.stdin.once('drain', r));
+    for (const png of pngs) if (!ff.stdin.write(png)) await Promise.race([new Promise((r) => ff.stdin.once('drain', r)), ffDone]);
     if ((f + 1) % FPS === 0 || f === frames - 1) {
       const s = (performance.now() - t0) / 1000;
       console.log(`rendered ${(FROM + (f + 1) / FPS).toFixed(1)}s / ${FROM + DUR}s  (${s.toFixed(0)}s elapsed, ${N} workers)`);

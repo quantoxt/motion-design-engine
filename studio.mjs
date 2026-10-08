@@ -51,7 +51,7 @@ const MAX_BODY = 256 * 1024;
 const argv = process.argv.slice(2);
 const PORT = Number(argv[argv.indexOf('--port') + 1]) || 4321;
 // Only the UI files are served; nothing else in studio/ (tests, notes) is reachable.
-const PUBLIC = { 'index.html': 'text/html; charset=utf-8', 'app.mjs': 'text/javascript', 'brief.mjs': 'text/javascript',
+const PUBLIC = { 'index.html': 'text/html; charset=utf-8', 'app.mjs': 'text/javascript', 'brief.mjs': 'text/javascript', 'md.mjs': 'text/javascript',
   'fonts/bricolage-latin.woff2': 'font/woff2', 'fonts/bricolage-latin-ext.woff2': 'font/woff2' };
 // The terminal pane's browser libraries, served straight from node_modules.
 const VENDOR = {

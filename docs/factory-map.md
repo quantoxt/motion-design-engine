@@ -31,6 +31,7 @@ MOTION DESIGN/
                             # Agents (#/agents), Film Library (#/library, #/library/<slug>)
     library.mjs             # Library: finished films per brand, versions folded in (finalize's naming), ffprobe metadata,
                             # the allowlist for /media/ (finals, poster.png, contact.png, animatic.mp4, silent_*.mp4)
+    md.mjs                  # markdown → HTML (escaped) for the shotlist panel
     brief.mjs               # template ⇄ form model: parse / serialize / readBack / filmSettings (shared with tests)
     films.mjs               # Start film (scaffold brands/<slug>/ from _template), gate status from files,
                             # shotlist + primary-render approvals → brands/<slug>/docs/approvals.json (sha256 of the
@@ -48,15 +49,17 @@ MOTION DESIGN/
   render.mjs                # serial reference renderer (reads film.json, ?w&h override)
   render-parallel.mjs       # DEFAULT renderer: parallel workers, byte-identical output
                             # --animatic (cheap pacing draft), --scan (half size, full fps, no blur, one keyframe
-                            # → out/scan.mp4 for holds.mjs), --all-formats (film.json; --formats a,b to pick;
+                            # → out/scan.mp4 for holds.mjs; with --from/--dur → scan_<from>-<to>.mp4), --all-formats (film.json; --formats a,b to pick;
                             # drafts land as animatic_<f>/scan_<f>.mp4, never silent_<f>.mp4),
                             # --workers N, --crf N, --from S, --out FILE
   shots.mjs                 # critique stills: beats (from film's beat grid) / strip / at / events
-                            # (window.EVENTS stills + window.TRANSFORMS 0.15s rows); --format <name>|all
-  check.mjs                 # geometry gate: clicks in targets at rest, no overflow, nothing cut by the
+                            # (window.EVENTS stills + 0.15s rows for window.TRANSFORMS and every window.SCENES
+                            # handoff); --format <name>|all
+  check.mjs                 # geometry gate: clicks in targets at rest, no overflow, no text collisions, nothing cut by the
                             # frame edge, every format → out/check.json
   holds.mjs                 # one-frame pops + holds >1s where only grain moves, from out/scan.mp4
-                            # (film.json "holds"/"pops" = allowed) → out/holds.json
+                            # (film.json "holds"/"pops" = allowed) → out/holds.json (full-film scan only) + out/pops.png
+                            # (±3 frames per pop); --file scan_<from>-<to>.mp4 checks a window, never the gate
   # render-parallel.mjs refuses a full render until both results passed on the current
   # index.html + film.json, and any format but the primary until the human approved the primary
   # render in the studio (--skip-checks overrides, shown on the studio's gates)
@@ -88,6 +91,9 @@ MOTION DESIGN/
     quantoxt/               # first film (FROZEN — do not modify): index.html, assets/,
                             # docs/, beats.json, music.mjs, out/ (quantoxt-vertical-1080x1920.mp4 et al.)
   .claude/skills/motion-reel/SKILL.md  # the factory door: one-sentence entry
+  lab/                          # reverse-pipeline lab (isolated): README, refs/<name>/ per
+                                # reference (gitignored: source.mp4 + prompt.md + meta.md),
+                                # analysis/ output. Imports engine read-only, never writes outside lab/
 ```
 
 ## Conventions
